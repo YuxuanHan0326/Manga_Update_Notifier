@@ -1,0 +1,42 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.history/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+.venv/
+venv/
+*.egg-info/
+
+# Node / Frontend
+node_modules/
+platform/frontend/node_modules/
+platform/frontend/dist/
+pnpm-debug.log*
+npm-debug.log*
+yarn-error.log*
+
+# Runtime data / logs
+*.log
+*.sqlite
+*.sqlite3
+*.db
+platform/data/
+*.sarif
+
+# Local build outputs
+platform/frontend_dist/
+
+# Local env / secrets
+.env
+.env.*
+!.env.example

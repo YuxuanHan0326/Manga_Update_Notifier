@@ -1,0 +1,225 @@
+﻿# Decisions
+
+## D-001 Greenfield Implementation
+- Date: 2026-03-09
+- Status: Accepted
+- Context: Existing repositories provide useful ideas but are oriented to downloader workflows.
+- Decision: Build a new project from zero as the primary codebase; use existing projects as references only.
+- Reason: Keeps architecture clean for update-monitoring and multi-source extensibility.
+- Impact: No direct dependency on old repository structures.
+
+## D-002 Phase 1 Source Scope
+- Date: 2026-03-09
+- Status: Accepted
+- Context: Need fast delivery of first working version.
+- Decision: Phase 1 supports CopyManga only; multi-source framework is mandatory.
+- Reason: Reduce delivery risk while validating adapter architecture.
+- Impact: Adapter interface must be generic from day one.
+
+## D-003 Product Scope Boundaries
+- Date: 2026-03-09
+- Status: Accepted
+- Context: Reference projects include download/packaging capabilities.
+- Decision: Phase 1 focuses on update detection and notification, not chapter downloading or CBZ packaging.
+- Reason: Align to product goal and avoid unnecessary complexity.
+- Impact: Data model and APIs center on subscriptions, events, schedules, and notifications.
+
+## D-004 Deployment Baseline
+- Date: 2026-03-09
+- Status: Accepted
+- Context: Target runtime is NAS via Docker.
+- Decision: Docker/Compose is the default deployment model for first release.
+- Reason: Matches user environment and improves portability.
+- Impact: All runtime configuration must be container-friendly and volume-persisted.
+
+## D-005 Documentation-Driven Memory Protocol
+- Date: 2026-03-09
+- Status: Accepted
+- Context: Long-running multi-session development needs stable external memory.
+- Decision: Session execution must be rebuilt from project memory files, not chat history.
+- Reason: Prevent context loss and inconsistent implementation behavior.
+- Impact: Every implementation round must read and update memory docs as required.
+
+## D-006 CI Platform and Gate
+- Date: 2026-03-09
+- Status: Accepted
+- Context: Phase 1 needs enforceable quality gates for backend, frontend, and container buildability.
+- Decision: Use GitHub Actions with required PR checks: backend (`ruff + pytest`), frontend (`lint + test + build`), and docker smoke build.
+- Reason: Aligns with existing ecosystem and provides low-friction branch protections.
+- Impact: Root Makefile is the canonical entrypoint for CI steps to avoid workflow script drift.
+
+## D-007 Release Strategy
+- Date: 2026-03-09
+- Status: Accepted
+- Context: Need reproducible release automation without slowing PR validation.
+- Decision: Separate CI and CD. PR/main pipelines validate only; tag pipeline builds and pushes multi-arch images to GHCR.
+- Reason: Keeps daily development fast and release behavior explicit.
+- Impact: `release.yml` is tag-driven (`v*.*.*`) and publishes `latest` + version tags.
+
+## D-008 Channel and Runtime Defaults (Phase 1)
+- Date: 2026-03-09
+- Status: Accepted
+- Context: Plan v2 fixed operational defaults for first implementation.
+- Decision: Default channels are Webhook + RSS, timezone default is `Asia/Shanghai`, check frequency default is every 6 hours, daily summary at 21:00 local timezone.
+- Reason: Matches user-selected defaults and minimizes initial setup complexity.
+- Impact: Defaults are encoded in backend settings and can be changed via API/UI.
+
+## D-009 Adapter Upstream Error Boundary for Search
+- Date: 2026-03-09
+- Status: Accepted
+- Context: CopyManga upstream may return non-JSON anti-bot/error pages; unhandled parse errors caused `/api/search` to return `500`.
+- Decision: Adapter-level upstream parse/request failures are converted to typed adapter exceptions and exposed by `/api/search` as controlled `502 Bad Gateway` responses.
+- Reason: Prevents internal-server-error behavior while keeping failure semantics explicit to UI/clients.
+- Impact: Search failure path is stable and test-covered; clients can distinguish upstream-source problems from local server crashes.
+
+## D-010 CopyManga Search Header Contract
+- Date: 2026-03-09
+- Status: Accepted
+- Context: Runtime probes and reference client comparison showed CopyManga search can return `200 text/html` (`error`) when specific request headers are missing.
+- Decision: CopyManga adapter must send `version=2025.08.15`, `platform=1`, `webp=1`, `region=1` together with existing `User-Agent` and `Accept` headers for search/update requests.
+- Reason: Restores stable JSON responses and keeps Phase 1 search UX usable.
+- Impact: `/api/search` success path is restored in runtime validation; header contract is now regression-tested.
+
+## D-011 Search Metadata Source and Fallback
+- Date: 2026-03-09
+- Status: Accepted
+- Context: Requirement changed to show last update + latest chapter text in search results, but CopyManga detail/chapter APIs can return risk-control `210` in this environment.
+- Decision: Keep search API as primary result source and enrich each item via comic webpage HTML scraping for metadata; if chapter text is absent, return only available fields instead of failing search.
+- Reason: Meets UX requirement while preserving reliability under unstable upstream anti-bot behavior.
+- Impact: Search returns richer item metadata (`latest_update_time`, `latest_chapters`) with graceful degradation and no API contract break.
+
+## D-012 Repository Governance Baseline
+- Date: 2026-03-09
+- Status: Accepted
+- Context: Project entered collaborative delivery stage and needs explicit repository/legal/process baseline.
+- Decision:
+  - Initialize Git at repository root.
+  - License project under GPLv3.
+  - Enforce process rule: every implementation round must maintain `README.md` and `.gitignore`; `README.md` must remain accurate Chinese user-facing documentation.
+- Reason: Ensures reproducible collaboration, clear legal status, and continuously usable user-facing documentation.
+- Impact: Documentation hygiene becomes part of normal delivery definition; prompt template and ledgers must reflect this rule.
+
+## D-013 Search Meta Fetch Status Contract
+- Date: 2026-03-09
+- Status: Accepted
+- Context: UI now needs to distinguish metadata "not fetched" vs "fetched but no chapter" without breaking existing search API shape.
+- Decision: CopyManga adapter enriches each search item with `meta.meta_fetch_status` (`ok` or `fetch_failed`) and normalizes missing chapter list to `latest_chapters: []` on successful fetch.
+- Reason: Enables precise UI copy for fetch-failed vs no-chapter states while keeping backend changes minimal and backward compatible.
+- Impact: Frontend uses `meta_fetch_status` to render user-facing metadata hints; adapter behavior is test-covered and cached by `item_id` for short-term fetch deduplication.
+
+## D-014 CopyManga Web Meta Multi-Signal Parsing
+- Date: 2026-03-09
+- Status: Accepted
+- Context: Users reported many `last-update` values still falling back to unknown despite official page showing update time and latest chapter.
+- Decision: Expand webpage metadata extraction from single narrow regex to layered parsing:
+  - JSON embedded keys (`datetime_updated`, `last_chapter.name`, and variants)
+  - HTML label/value patterns for update time and latest chapter
+  - fallback chapter-title patterns
+  - escaped unicode normalization for embedded payload snippets
+- Reason: Improves robustness against page-structure variance without introducing additional upstream API dependencies.
+- Impact: Unknown-rate should drop significantly for search metadata enrichment; behavior is covered by adapter unit regressions.
+
+## D-015 Post-Change Docker Verification
+- Date: 2026-03-09
+- Status: Accepted
+- Context: User requires immediate runtime verifiability after each implementation round in NAS-target Docker environment.
+- Decision: After every change round, run `cd platform && docker compose up -d --build` and report container status plus health endpoint result.
+- Reason: Ensures each delivered change is quickly verifiable in the real deployment path and reduces feedback delay.
+- Impact: Docker build/start check becomes a mandatory delivery step, and execution notes must include verification evidence.
+
+## D-016 Worklog Rotation Policy
+- Date: 2026-03-09
+- Status: Accepted
+- Context: Worklog has grown too long for practical handoff and quick context rebuild.
+- Decision: When `WORKLOG.md` exceeds 150 lines, archive it to `worklog_archive/WORKLOG_ARCHIVE_<timestamp>.md` and start a new concise `WORKLOG.md` whose header summarizes key archived outcomes.
+- Reason: Keeps active execution memory compact while preserving complete historical traceability.
+- Impact: Worklog maintenance now includes automatic rotation threshold handling in every implementation round.
+
+## D-017 Title-Based Latest-Chapter Fallback
+- Date: 2026-03-09
+- Status: Accepted
+- Context: Non-standard latest chapter/volume names (for example `恶灵的失恋2`, `第7部24卷`) were still missing for some works even after multi-signal parser update.
+- Decision: Add `<title>` parsing as high-priority latest-chapter fallback in CopyManga web metadata extraction, using `...漫畫-<latest>-<status>...` style patterns.
+- Reason: Real pages reliably expose latest chapter/volume text in title metadata even when other HTML/JSON fields are absent or non-uniform.
+- Impact: Search metadata coverage for non-standard latest names improves; behavior is locked by new adapter unit tests and runtime API verification.
+
+## D-018 Latest-Chapter De-Dupe and Noise Filtering
+- Date: 2026-03-09
+- Status: Accepted
+- Context: After title-based fallback, some items showed over-captured latest chapter data (duplicate long/short variants and noisy fallback sentences).
+- Decision: Canonicalize latest chapter candidates by chapter-token extraction, dedupe by canonical token, and ignore fallback candidates that do not contain valid chapter tokens.
+- Reason: Preserve non-standard names while preventing duplicate/noisy UI output.
+- Impact: Search metadata quality improves with concise `latest_chapters` values; behavior is regression-tested and runtime-verified on reported JoJo cases.
+
+## D-019 Protocol Exceptions for Memory and Docker Verification
+- Date: 2026-03-09
+- Status: Accepted
+- Context: Team workflow needs explicit exceptions to avoid unnecessary ledger churn and unnecessary runtime rebuilds for non-implementation rounds.
+- Decision:
+  - If user only asks for explanation and no new implementation task is requested, ending without memory-file updates is allowed.
+  - If a round does not touch program body (for example only `README.md`/protocol/ledger docs), Docker build/start verification can be skipped.
+- Reason: Keeps workflow efficient while preserving strict validation for actual runtime-impacting changes.
+- Impact: `D-015` remains default for implementation rounds, but this decision defines explicit exception boundaries.
+
+## D-020 IP Timezone Auto-Detection and Debug Event Isolation
+- Date: 2026-03-09
+- Status: Accepted
+- Context: User requested timezone to be auto-set by IP, added subscription-level debug tools, and required that simulated updates must not pollute normal daily summary behavior.
+- Decision:
+  - Add `timezone_auto` runtime setting (default enabled) and apply request-IP-based timezone lookup on settings/schedule reads with safe fallback to existing timezone.
+  - Add per-subscription debug endpoints for manual notify test and simulated update creation.
+  - Mark simulated events via `dedupe_key` prefix `debug:` and exclude them from daily summary candidate query.
+  - Daily summary auto-push evaluates same-day events only in configured timezone; when there are no same-day real updates, it returns `no_updates` and sends nothing.
+- Reason: Satisfies requested operability/debug UX while preventing false positives in production notifications.
+- Impact:
+  - Settings API/UI now expose auto-timezone behavior.
+  - Debug operations are available without schema migration.
+  - Automatic daily summary was initially tied to same-day real updates (later superseded by `D-021`).
+
+## D-021 Backlog-Safe Summary Window (Supersedes D-020 Same-Day Cutoff)
+- Date: 2026-03-09
+- Status: Accepted
+- Context: User reported downtime/restart scenario where updates could be detected after previous summary time and then missed by strict same-day filtering.
+- Decision:
+  - Daily summary candidates are all unsummarized real events (`summarized_at is null` and non-`debug:`), regardless calendar day.
+  - Keep `no_updates` behavior when candidate set is empty.
+- Reason: Prevents cross-day missed notifications while preserving no-noise behavior and debug-event isolation.
+- Impact:
+  - Replaces D-020 sub-decision of same-day cutoff.
+  - Recovery after outage will still deliver pending real updates in next successful summary run.
+
+## D-022 Auto-Timezone Private-IP Fallback
+- Date: 2026-03-09
+- Status: Accepted
+- Context: In NAS/LAN deployments, incoming client IP is often private (`192.168.x.x`/`172.x.x.x`) so direct IP geolocation returns no timezone and system stayed on fallback timezone.
+- Decision:
+  - Keep public-IP direct lookup as first path.
+  - Add fallback lookup endpoint for service-side source-IP detection when request IP is private or direct lookup fails.
+  - Introduce `MUP_IP_TIMEZONE_SELF_API_URL` (default `https://ipapi.co/json/`).
+- Reason: Ensures auto-timezone works in common private-network setups.
+- Impact:
+  - Auto-timezone now resolves correctly in LAN scenarios without requiring reverse-proxy public-IP headers.
+
+## D-023 Documentation Sync and Debug-Comment Baseline
+- Date: 2026-03-09
+- Status: Accepted
+- Context: Ongoing multi-round implementation requires docs to stay in sync with behavior changes, and developers need stable in-code debug context during maintenance.
+- Decision:
+  - Every implementation/code-change round must review and update related docs (`README.md` and, when applicable, `docs/*`) to reflect actual behavior.
+  - Every feature implementation or bugfix that touches program code should add concise, meaningful comments around non-trivial logic for debug and handoff.
+- Reason: Reduces drift between behavior and documentation, and improves maintainability/debug efficiency without large refactors.
+- Impact:
+  - Documentation maintenance is part of done criteria for code changes.
+  - Core runtime modules progressively include explanatory comments for key paths and fallback logic.
+
+## D-024 Approval Gate for Requirements/Brief Changes
+- Date: 2026-03-09
+- Status: Accepted
+- Context: `REQUIREMENTS.md` and `PROJECT_BRIEF.md` are scope-control documents and should not be edited casually during implementation.
+- Decision:
+  - `REQUIREMENTS.md` / `PROJECT_BRIEF.md` changes require reporting a concrete edit plan to developer first, then editing only after explicit approval.
+  - For normal implementation/protocol rounds, update ledgers (`NEXT_STEP.md`, `WORKLOG.md`, `TASKS.md`, `STATE.md`) and update `ARCHITECTURE.md`/`DECISIONS.md` when needed.
+- Reason: Prevents requirement drift and keeps product scope changes explicitly approved.
+- Impact:
+  - Requirement/brief modifications become a gated operation.
+  - Session protocol now distinguishes architecture/decision maintenance from requirement-level scope changes.

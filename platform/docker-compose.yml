@@ -1,0 +1,19 @@
+services:
+  manga-update-platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: manga-update-platform:latest
+    container_name: manga-update-platform
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - MUP_DATABASE_URL=sqlite:///./data/app.db
+      - MUP_APP_TIMEZONE=Asia/Shanghai
+      - MUP_CHECK_CRON=0 */6 * * *
+      - MUP_DAILY_SUMMARY_CRON=0 21 * * *
+      - MUP_APP_BASE_URL=http://localhost:8000
+      - MUP_CM_API_BASE_URL=https://api.mangacopy.com
+    volumes:
+      - ./data:/app/data
