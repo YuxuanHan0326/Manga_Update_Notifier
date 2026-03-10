@@ -1,24 +1,26 @@
 ﻿# Next Step
 
 ## Current Task
-Close outstanding runtime-verification blocker from prior implementation round (`T-035`/`T-036`), then continue routine hardening.
+Verify and close the security-workflow repair round in GitHub Actions, then continue pending runtime-verification blocker cleanup.
 
 ## Progress So Far
-- Documentation alignment round completed:
-  - `REQUIREMENTS.md` and `ARCHITECTURE.md` updated to match current implementation.
-  - `PROMPT_TEMPLATE.md` protocol wording synced with developer manual change.
-  - Ledgers updated (`TASKS.md`, `WORKLOG.md`, `STATE.md`, `DECISIONS.md`).
+- Completed implementation:
+  - `.github/workflows/security.yml` split into `python-audit` / `frontend-audit` / `trivy-image`.
+  - Trivy execution switched to official container scan path.
+  - `platform/backend/requirements.txt` bumped `fastapi` baseline to resolve vulnerable Starlette lineage.
+  - `README.md` security-check section updated.
+- Local backend validation passed (`ruff`, `pytest 24 passed`).
 
 ## Current Blockers
-- Docker daemon still unavailable (`//./pipe/dockerDesktopLinuxEngine` not found), blocking pending mandatory runtime verification for earlier code-change round.
+- Local Docker daemon still unavailable (`//./pipe/dockerDesktopLinuxEngine` not found), so mandatory local compose/health verification remains blocked.
 
 ## Next Concrete Edits
-1. Once Docker daemon is restored, run:
-   - `cd platform && docker compose up -d --build`
-   - `docker compose ps`
-   - `GET /api/health`
-2. If verification passes, close `T-035` and unblock/close `T-036`.
-3. Continue next backlog item: GitHub branch protection application and observability hardening docs.
+1. Push current branch and trigger `security.yml` run.
+2. Confirm three jobs statuses:
+   - `python-audit` should no longer fail at Starlette CVEs.
+   - `frontend-audit` runs independently and reports its own result.
+   - `trivy-image` should reach actual scan stage (no setup-trivy install failure).
+3. After Docker daemon恢复, close `T-035`/`T-036` via compose+health verification.
 
 ## Constraints Not To Forget
 - Must rebuild session context from memory files before coding.

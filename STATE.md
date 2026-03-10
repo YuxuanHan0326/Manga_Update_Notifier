@@ -89,6 +89,13 @@ Stabilize and harden the shipped Phase 1 implementation for production use on NA
   - Updated `ARCHITECTURE.md` to reflect current API/service behavior (`/api/timezones`, debug endpoints, timezone fallback service, summary debug exclusion, adapter meta cache).
   - Synced protocol wording in `PROMPT_TEMPLATE.md` and recorded decision `D-024` for approval-gated requirement/brief edits.
   - This round touched docs only; Docker rebuild was skipped by protocol exception.
+- Completed security-workflow repair round:
+  - Split security workflow into independent jobs (`python-audit`, `frontend-audit`, `trivy-image`) to improve failure isolation.
+  - Switched trivy scan path to official Trivy container execution (avoids prior setup-trivy install failure).
+  - Upgraded backend `fastapi` baseline to resolve vulnerable Starlette dependency chain found by `pip-audit`.
+  - Added security workflow description in `README.md`.
+  - Local backend validation passed (`ruff`, `pytest 24 passed`).
+  - Docker runtime verification attempted but still blocked by local daemon pipe unavailability.
 
 ## Next Step
 1. Start Docker daemon and rerun mandatory runtime verification (`compose up -d --build`, `compose ps`, `/api/health`) to close this round.

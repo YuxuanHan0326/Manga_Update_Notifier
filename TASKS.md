@@ -29,6 +29,7 @@
 
 | ID | Task | Req | Completed | Notes |
 |---|---|---|---|---|
+| T-038 | Repair failing GitHub security workflow (audit + trivy) | NFR-005, NFR-002 | 2026-03-10 | Split security audits into independent jobs, switched trivy scan to container path, upgraded FastAPI baseline to address Starlette CVE findings |
 | T-034 | Fix missing prefill for subscription last-seen time/chapter on create | FR-003, FR-004, NFR-001 | 2026-03-09 | Added create-time prefill from search metadata (`latest_chapters`, `latest_update_time`) and covered with integration/runtime validation |
 | T-037 | Align requirement/architecture docs with current implementation and protocol update | NFR-002 | 2026-03-09 | Updated `REQUIREMENTS.md`/`ARCHITECTURE.md` and synced protocol wording in `PROMPT_TEMPLATE.md`; approved before editing requirements |
 | T-033 | Fix auto-timezone failure under private/LAN client IPs | FR-005, NFR-001 | 2026-03-09 | Added private-IP fallback timezone lookup (`MUP_IP_TIMEZONE_SELF_API_URL`) and unit tests; runtime `/api/settings` now resolves `Europe/London` in current environment |

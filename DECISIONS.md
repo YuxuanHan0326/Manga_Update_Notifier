@@ -223,3 +223,18 @@
 - Impact:
   - Requirement/brief modifications become a gated operation.
   - Session protocol now distinguishes architecture/decision maintenance from requirement-level scope changes.
+
+## D-025 Security Workflow Hardening for Reliability
+- Date: 2026-03-10
+- Status: Accepted
+- Context: Security workflow failed in two ways:
+  - `pip-audit` blocked by known `starlette` CVEs in current dependency resolution.
+  - `trivy-action` failed during `setup-trivy` binary install before actual image scan.
+- Decision:
+  - Upgrade backend framework dependency baseline (`fastapi`) to resolve vulnerable `starlette` lineage.
+  - Split security dependency audits into separate jobs (`python-audit`, `frontend-audit`) so one failure does not hide the other result.
+  - Run Trivy scan via official container image instead of setup-trivy binary install path.
+- Reason: Keep security checks strict while reducing pipeline fragility and improving failure diagnosability.
+- Impact:
+  - Security workflow becomes more robust and easier to debug.
+  - Dependency vulnerability findings remain blocking at `HIGH/CRITICAL` severity.

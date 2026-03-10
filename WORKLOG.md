@@ -85,3 +85,33 @@
 ### 10. Docs-Round Governance
 - Reviewed root `README.md` and `.gitignore`; no content change required for this round.
 - This is a docs-only round (no program-body changes), so Docker verification is skipped by protocol exception.
+
+### 11. Round Start (Security Workflow Repair)
+- Re-read memory files and locked scope to GitHub Actions security failures.
+- Created `T-038` as `IN_PROGRESS` in `TASKS.md`.
+- Root-causes confirmed from user-provided logs:
+  - `pip-audit` failed on Starlette CVEs.
+  - `trivy-action` failed before scan at setup/install phase.
+
+### 12. Security CI Implementation
+- Updated `.github/workflows/security.yml`:
+  - split `dependency-audit` into independent `python-audit` and `frontend-audit`.
+  - replaced `aquasecurity/trivy-action` path with direct Trivy container scan command to avoid setup binary install failure.
+  - kept `HIGH/CRITICAL` blocking behavior and always upload SARIF artifact.
+- Updated `platform/backend/requirements.txt`:
+  - upgraded `fastapi` baseline to `0.120.0` to resolve vulnerable Starlette lineage reported by `pip-audit`.
+
+### 13. Validation + Runtime Attempt
+- Local checks passed:
+  - `ruff check platform/backend/app platform/tests`
+  - `pytest -q platform/tests` (`24 passed`)
+- Docker verification attempted per protocol:
+  - `docker compose up -d --build`
+  - `docker compose ps`
+  - `GET /api/health`
+- Result: still blocked by local Docker daemon pipe unavailability.
+
+### 14. Ledger + Docs Sync
+- Updated `README.md` security-check section to reflect current workflow jobs.
+- Added decision `D-025` for security workflow hardening strategy.
+- Updated `NEXT_STEP.md`, `TASKS.md` (T-038 moved to DONE), and this worklog.

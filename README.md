@@ -74,6 +74,13 @@ curl "http://localhost:8000/api/search?source=copymanga&q=one&page=1"
 - 开发协作规范：[`CONTRIBUTING.md`](CONTRIBUTING.md)
 - 安全策略与漏洞上报：[`SECURITY.md`](SECURITY.md)
 
+## 安全检查（GitHub Actions）
+- 工作流：`.github/workflows/security.yml`
+- 当前包含三类检查：
+  - `python-audit`：`pip-audit` 扫描后端依赖漏洞
+  - `frontend-audit`：`pnpm audit --prod` 扫描前端生产依赖漏洞
+  - `trivy-image`：构建镜像后使用 Trivy 扫描镜像 `HIGH/CRITICAL` 漏洞
+
 ## 核心配置（环境变量）
 通过 `platform/docker-compose.yml` 传入：
 - `MUP_DATABASE_URL`：数据库连接（默认 SQLite）

@@ -7,25 +7,30 @@ on:
     - cron: '0 2 * * *'
 
 jobs:
-  dependency-audit:
+  python-audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Python audit
         run: |
           python -m pip install --upgrade pip
           pip install pip-audit
           pip-audit -r platform/backend/requirements.txt --strict
+
+  frontend-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
 
       - name: Frontend audit
         run: |
@@ -41,15 +46,20 @@ jobs:
         run: docker build -t local/manga-update-platform:scan platform
 
       - name: Trivy scan
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: local/manga-update-platform:scan
-          format: sarif
-          output: trivy-results.sarif
-          severity: HIGH,CRITICAL
-          exit-code: '1'
+        # Run Trivy via container to avoid setup-trivy binary install failures.
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${{ github.workspace }}:/workspace" \
+            aquasec/trivy:0.61.0 image \
+            --severity HIGH,CRITICAL \
+            --format sarif \
+            --output /workspace/trivy-results.sarif \
+            --exit-code 1 \
+            local/manga-update-platform:scan
 
       - name: Upload Trivy result artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: trivy-sarif
