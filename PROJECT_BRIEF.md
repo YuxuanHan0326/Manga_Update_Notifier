@@ -11,11 +11,14 @@ Deliver a Docker-first web application that:
 - Tracks subscribed comics/content items
 - Checks updates on schedule
 - Sends daily summary notifications at a fixed time
-- Starts with CopyManga support
+- Supports CopyManga and KXO in current release
 - Can be extended to many different sites in the future
 
 ## Scope (Phase 1)
-- Source support: CopyManga
+- Source support:
+  - CopyManga (search + update detection)
+  - KXO manual-only path:
+    - manual URL/ID subscription + update detection
 - Subscription management via Web UI
 - Search in UI and one-click subscription creation
 - Scheduled update checks
@@ -25,6 +28,8 @@ Deliver a Docker-first web application that:
 ## Success Criteria
 - User can deploy with Docker on NAS and open Web UI
 - User can search CopyManga in UI and add a subscription without manual ID editing
+- User can add KXO subscription by URL/ID in manual mode without account/password storage
+- KXO search/login entry is removed and KXO page remains manageable for manual workflow
 - Service detects new chapters for subscribed items
 - Service sends one daily summary notification at configured time
 - System keeps running stably for 7+ days without manual restart
@@ -39,6 +44,7 @@ Deliver a Docker-first web application that:
 - Must run in containerized NAS environment
 - Must keep architecture extensible for heterogeneous sites
 - Must persist project memory in markdown files
+- Must not store source account/password credentials; KXO currently uses manual-subscription path only
 
 ## Stakeholder Intent (Confirmed)
 - New project from zero (not patching old downloader as main path)

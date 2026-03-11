@@ -26,6 +26,33 @@ h1 {
   margin-top: 0;
 }
 
+.tab-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tab-btn {
+  border: 1px solid #b7c4de;
+  background: #fff;
+  color: #334155;
+}
+
+.tab-btn.is-active {
+  border-color: #5b7bd8;
+  background: #eaf0ff;
+  color: #1e3a8a;
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.is-active {
+  display: block;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -57,8 +84,21 @@ textarea {
   min-width: 0;
 }
 
+/* Checkbox should not inherit full-width text-input layout. */
+input[type="checkbox"] {
+  width: auto;
+  min-width: auto;
+  padding: 0;
+  margin: 0;
+}
+
 button {
   cursor: pointer;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 58px;
 }
 
 table {
@@ -79,6 +119,24 @@ td {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.actions input {
+  min-width: 220px;
+  flex: 1 1 240px;
+}
+
+.actions .toggle-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  flex-direction: row;
+}
+
+.actions .toggle-option input[type="checkbox"] {
+  flex: 0 0 auto;
+  margin-left: 2px;
 }
 
 .badge {
@@ -104,6 +162,31 @@ td {
   justify-content: center;
   color: #7d8ca8;
   font-size: 11px;
+}
+
+.sub-cover {
+  width: 48px;
+  height: 64px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid #d7e1f2;
+  background: #f2f5fb;
+}
+
+.sub-cover-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7d8ca8;
+  font-size: 10px;
+}
+
+.cover-slot {
+  display: inline-block;
+}
+
+.cover-fallback[hidden] {
+  display: none !important;
 }
 
 .search-title {

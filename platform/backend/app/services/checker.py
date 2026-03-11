@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..adapters.registry import get_adapter
 from ..models import Subscription, UpdateEvent
+from .settings import get_runtime_settings
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ def _meta(raw: str) -> dict:
 
 def run_update_check(db: Session) -> dict[str, int]:
     rows = db.query(Subscription).filter(Subscription.status == "active").all()
+    runtime = get_runtime_settings(db)
     scanned = 0
     discovered = 0
 
@@ -30,6 +32,8 @@ def run_update_check(db: Session) -> dict[str, int]:
         try:
             meta = _meta(row.item_meta_json)
             adapter = get_adapter(row.source_code)
+            if hasattr(adapter, "configure_runtime"):
+                adapter.configure_runtime(runtime)  # type: ignore[attr-defined]
             updates = adapter.list_updates(row.item_id, meta)
             if not updates:
                 continue

@@ -27,6 +27,7 @@ yarn-error.log*
 
 # Runtime data / logs
 *.log
+*.har
 *.sqlite
 *.sqlite3
 *.db

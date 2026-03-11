@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from urllib.parse import urlparse
 from uuid import uuid4
 from zoneinfo import ZoneInfo, available_timezones
 
+import httpx
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from .adapters.base import AdapterError
+from .adapters.base import AdapterAuthRequiredError, AdapterError, AdapterSessionInvalidError
+from .adapters.kxo import KxoAdapter
 from .adapters.registry import get_adapter, list_adapters
 from .db import get_db
 from .models import NotificationDelivery, Subscription, UpdateEvent
@@ -21,6 +24,7 @@ from .schemas import (
     DailyScheduleUpdate,
     EventResponse,
     JobRunResponse,
+    KxoManualSubscriptionCreate,
     ScheduleUpdate,
     SearchResponse,
     SettingsResponse,
@@ -31,8 +35,9 @@ from .schemas import (
     SubscriptionUpdate,
 )
 from .services.checker import run_update_check
-from .services.settings import get_runtime_settings, upsert_settings
+from .services.settings import get_runtime_settings, upsert_ephemeral_settings, upsert_settings
 from .services.subscriptions import (
+    backfill_subscription_covers,
     create_subscription,
     delete_subscription,
     list_subscriptions,
@@ -43,8 +48,36 @@ from .services.timezone import detect_timezone_from_ip, extract_client_ip
 
 router = APIRouter(prefix="/api")
 
+_ALLOWED_COVER_HOST_SUFFIXES = (
+    "mangafunb.fun",
+    "mangacopy.com",
+    "mxomo.com",
+    "kzo.moe",
+    "kxo.moe",
+)
+
+
+def _is_allowed_cover_host(host: str) -> bool:
+    normalized = (host or "").strip().lower()
+    if not normalized:
+        return False
+    return any(
+        normalized == suffix or normalized.endswith(f".{suffix}")
+        for suffix in _ALLOWED_COVER_HOST_SUFFIXES
+    )
+
+
+def _cover_referer_candidates(parsed_url) -> list[str | None]:
+    host = (parsed_url.hostname or "").lower()
+    # Some KXO CDN hosts (for example `*.mxomo.com`) reject same-host referer but
+    # accept source-site referer or no referer. Ordered fallback keeps behavior stable.
+    if host.endswith("mxomo.com"):
+        return [None, "https://kzo.moe/", "https://kxo.moe/"]
+    return [None, f"{parsed_url.scheme}://{parsed_url.netloc}/"]
+
 
 def _build_settings_response(cfg: dict) -> SettingsResponse:
+    kxo_cookie = cfg.get("kxo_cookie", "")
     return SettingsResponse(
         timezone=cfg["timezone"],
         timezone_auto=cfg["timezone_auto"],
@@ -54,6 +87,11 @@ def _build_settings_response(cfg: dict) -> SettingsResponse:
         webhook_url=cfg["webhook_url"],
         rss_enabled=cfg["rss_enabled"],
         app_base_url=cfg["app_base_url"],
+        kxo_base_url=cfg["kxo_base_url"],
+        kxo_auth_mode=cfg["kxo_auth_mode"],
+        kxo_cookie_configured=bool(isinstance(kxo_cookie, str) and kxo_cookie.strip()),
+        kxo_remember_session=cfg["kxo_remember_session"],
+        kxo_user_agent=cfg["kxo_user_agent"],
     )
 
 
@@ -105,6 +143,59 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@router.get("/cover-proxy")
+def get_cover_proxy(url: str = Query(..., min_length=1)) -> Response:
+    parsed = urlparse(url.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="invalid cover url")
+
+    host = (parsed.hostname or "").lower()
+    # Keep proxy scope narrow to prevent it from becoming a generic open proxy.
+    if not _is_allowed_cover_host(host):
+        raise HTTPException(status_code=400, detail=f"cover host is not allowed: {host}")
+
+    base_headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    }
+    last_error = "cover proxy upstream error: unknown"
+    for referer in _cover_referer_candidates(parsed):
+        headers = dict(base_headers)
+        if referer:
+            headers["Referer"] = referer
+        try:
+            upstream = httpx.get(url, headers=headers, timeout=15, follow_redirects=True)
+        except httpx.HTTPError as exc:
+            last_error = f"cover proxy upstream transport error: {exc}"
+            continue
+
+        if upstream.status_code >= 400:
+            last_error = (
+                f"cover proxy upstream status={upstream.status_code} "
+                f"for referer={referer or '<none>'}"
+            )
+            continue
+
+        content_type = str(upstream.headers.get("content-type", "")).lower()
+        if not content_type.startswith("image/"):
+            last_error = (
+                "cover proxy upstream returned non-image payload "
+                f"(referer={referer or '<none>'})"
+            )
+            continue
+
+        return Response(
+            content=upstream.content,
+            media_type=content_type,
+            headers={"Cache-Control": "public, max-age=21600"},
+        )
+
+    raise HTTPException(status_code=502, detail=last_error)
+
+
 @router.get("/sources", response_model=list[SourceInfo])
 def list_sources() -> list[SourceInfo]:
     return [SourceInfo(code=a.code, name=a.name, supports_search=True) for a in list_adapters()]
@@ -117,15 +208,36 @@ def list_timezones() -> list[str]:
 
 @router.get("/search", response_model=SearchResponse)
 def search(
-    source: str = Query(...), q: str = Query(..., min_length=1), page: int = Query(1, ge=1)
+    source: str = Query(...),
+    q: str = Query(..., min_length=1),
+    page: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
 ) -> SearchResponse:
+    if source == "kxo":
+        # KXO is manual-only in current scope to avoid auth/session fragility.
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "kxo source supports manual subscription only; "
+                "use /api/subscriptions/manual-kxo"
+            ),
+        )
+
     try:
         adapter = get_adapter(source)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    cfg = get_runtime_settings(db)
+    if hasattr(adapter, "configure_runtime"):
+        adapter.configure_runtime(cfg)  # type: ignore[attr-defined]
+
     try:
         data = adapter.search(q, page)
+    except AdapterAuthRequiredError as exc:
+        raise HTTPException(status_code=401, detail=f"auth_required: {exc}") from exc
+    except AdapterSessionInvalidError as exc:
+        raise HTTPException(status_code=401, detail=f"session_invalid: {exc}") from exc
     except AdapterError as exc:
         # Adapter upstream errors are mapped to 502 to avoid leaking internal 500 semantics.
         raise HTTPException(status_code=502, detail=f"upstream source error: {exc}") from exc
@@ -149,7 +261,9 @@ def search(
 
 @router.get("/subscriptions", response_model=list[SubscriptionResponse])
 def get_subscriptions(db: Session = Depends(get_db)) -> list[SubscriptionResponse]:
-    return [_sub_to_response(row) for row in list_subscriptions(db)]
+    rows = list_subscriptions(db)
+    backfill_subscription_covers(db, rows)
+    return [_sub_to_response(row) for row in rows]
 
 
 @router.post("/subscriptions", response_model=SubscriptionResponse)
@@ -157,6 +271,63 @@ def post_subscriptions(
     payload: SubscriptionCreate, db: Session = Depends(get_db)
 ) -> SubscriptionResponse:
     row = create_subscription(db, payload)
+    return _sub_to_response(row)
+
+
+@router.post("/subscriptions/manual-kxo", response_model=SubscriptionResponse)
+def post_manual_kxo_subscription(
+    payload: KxoManualSubscriptionCreate, db: Session = Depends(get_db)
+) -> SubscriptionResponse:
+    try:
+        adapter = get_adapter("kxo")
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not hasattr(adapter, "fetch_item_snapshot"):
+        raise HTTPException(status_code=500, detail="kxo adapter is unavailable")
+
+    cfg = get_runtime_settings(db)
+    if hasattr(adapter, "configure_runtime"):
+        adapter.configure_runtime(cfg)  # type: ignore[attr-defined]
+    if hasattr(adapter, "parse_item_id"):
+        item_id = adapter.parse_item_id(payload.ref)  # type: ignore[attr-defined]
+    else:
+        item_id = KxoAdapter.parse_item_id(payload.ref)
+    if not item_id:
+        raise HTTPException(
+            status_code=400,
+            detail="invalid kxo ref: expected URL /c/<id>.htm or numeric ID",
+        )
+
+    snapshot = {}
+    try:
+        snapshot = adapter.fetch_item_snapshot(item_id)
+    except AdapterError as exc:
+        # Manual add can still proceed with explicit title when upstream snapshot fetch fails.
+        if not payload.item_title:
+            raise HTTPException(status_code=502, detail=f"upstream source error: {exc}") from exc
+
+    item_title = (payload.item_title or "").strip()
+    if not item_title:
+        item_title = str(snapshot.get("item_title", "")).strip()
+    if not item_title:
+        item_title = f"kxo:{item_id}"
+
+    item_meta = {
+        "group_word": "default",
+        "cover": snapshot.get("cover", ""),
+        "latest_update_time": snapshot.get("latest_update_time", ""),
+        "latest_chapters": snapshot.get("latest_chapters", []),
+    }
+    row = create_subscription(
+        db,
+        SubscriptionCreate(
+            source_code="kxo",
+            item_id=item_id,
+            item_title=item_title,
+            group_word="default",
+            item_meta=item_meta,
+        ),
+    )
     return _sub_to_response(row)
 
 
@@ -421,6 +592,31 @@ def put_settings(
         CronTrigger.from_crontab(updates["check_cron"])
     if "daily_summary_cron" in updates:
         CronTrigger.from_crontab(updates["daily_summary_cron"])
+    if "kxo_auth_mode" in updates and updates["kxo_auth_mode"] not in {"guest", "cookie"}:
+        raise HTTPException(status_code=400, detail="invalid kxo_auth_mode")
+    if "kxo_base_url" in updates and not str(updates["kxo_base_url"]).startswith("http"):
+        raise HTTPException(status_code=400, detail="invalid kxo_base_url")
+
+    cfg_before = get_runtime_settings(db)
+    remember_session = bool(
+        updates.get("kxo_remember_session", cfg_before.get("kxo_remember_session", False))
+    )
+    if not remember_session and "kxo_cookie" in updates:
+        # Non-persistent cookie mode keeps credential only in process memory by default.
+        cookie_value = str(updates.pop("kxo_cookie") or "").strip()
+        upsert_ephemeral_settings({"kxo_cookie": cookie_value})
+        updates["kxo_cookie"] = ""
+    elif (
+        remember_session
+        and updates.get("kxo_remember_session") is True
+        and "kxo_cookie" not in updates
+    ):
+        # If user switches to remember mode, persist the currently effective in-memory cookie.
+        updates["kxo_cookie"] = str(cfg_before.get("kxo_cookie", "")).strip()
+    elif not remember_session and updates.get("kxo_remember_session") is False:
+        # Switching to non-persistent mode should immediately clear any stored cookie.
+        upsert_ephemeral_settings({"kxo_cookie": str(cfg_before.get("kxo_cookie", "")).strip()})
+        updates["kxo_cookie"] = ""
 
     cfg = upsert_settings(db, updates)
     cfg, timezone_changed = _maybe_auto_timezone(cfg, request, db)
@@ -429,3 +625,27 @@ def put_settings(
         scheduler_manager.reload_jobs()
 
     return _build_settings_response(cfg)
+
+
+@router.post("/settings/kxo/test")
+def post_test_kxo_settings(db: Session = Depends(get_db)) -> dict:
+    try:
+        adapter = get_adapter("kxo")
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    cfg = get_runtime_settings(db)
+    if hasattr(adapter, "configure_runtime"):
+        adapter.configure_runtime(cfg)  # type: ignore[attr-defined]
+
+    cookie_configured = bool(str(cfg.get("kxo_cookie", "")).strip())
+    if cfg.get("kxo_auth_mode") == "cookie" and not cookie_configured:
+        return {"status": "unconfigured", "detail": "kxo cookie is empty"}
+    try:
+        ok = adapter.healthcheck()
+    except AdapterError as exc:
+        return {"status": "invalid", "detail": str(exc)}
+    return {
+        "status": "ok" if ok else "invalid",
+        "detail": "" if ok else "kxo healthcheck failed",
+        "cookie_configured": cookie_configured,
+    }

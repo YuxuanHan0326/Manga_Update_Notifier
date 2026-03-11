@@ -4,8 +4,10 @@ import json
 
 from sqlalchemy.orm import Session
 
+from ..adapters.registry import get_adapter
 from ..models import Subscription
 from ..schemas import SubscriptionCreate, SubscriptionUpdate
+from .settings import get_runtime_settings
 
 
 def _decode_meta(raw: str) -> dict:
@@ -49,6 +51,46 @@ def _prefill_last_seen_meta(meta: dict) -> None:
 
 def list_subscriptions(db: Session) -> list[Subscription]:
     return db.query(Subscription).order_by(Subscription.id.desc()).all()
+
+
+def backfill_subscription_covers(db: Session, rows: list[Subscription]) -> None:
+    runtime = get_runtime_settings(db)
+    changed = False
+    for row in rows:
+        meta = _decode_meta(row.item_meta_json)
+        if isinstance(meta.get("cover"), str) and meta["cover"].strip():
+            continue
+        try:
+            adapter = get_adapter(row.source_code)
+        except KeyError:
+            continue
+        if not hasattr(adapter, "fetch_item_snapshot"):
+            continue
+        if hasattr(adapter, "configure_runtime"):
+            adapter.configure_runtime(runtime)  # type: ignore[attr-defined]
+        try:
+            # Opportunistic metadata hydration fixes historical rows created before cover support.
+            try:
+                snapshot = adapter.fetch_item_snapshot(row.item_id, meta)  # type: ignore[attr-defined]
+            except TypeError:
+                snapshot = adapter.fetch_item_snapshot(row.item_id)  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            continue
+
+        cover = snapshot.get("cover", "")
+        if not isinstance(cover, str) or not cover.strip():
+            continue
+        meta["cover"] = cover.strip()
+        if "latest_update_time" in snapshot and "latest_update_time" not in meta:
+            meta["latest_update_time"] = snapshot.get("latest_update_time", "")
+        if "latest_chapters" in snapshot and "latest_chapters" not in meta:
+            meta["latest_chapters"] = snapshot.get("latest_chapters", [])
+        _prefill_last_seen_meta(meta)
+        row.item_meta_json = json.dumps(meta, ensure_ascii=False)
+        changed = True
+
+    if changed:
+        db.commit()
 
 
 def create_subscription(db: Session, payload: SubscriptionCreate) -> Subscription:

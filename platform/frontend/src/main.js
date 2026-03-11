@@ -1,5 +1,12 @@
-﻿import './style.css'
-import { statusText } from './utils'
+import './style.css'
+import {
+  buildCheckCronFromHours,
+  buildDailyCronFromTime,
+  normalizeCheckHours,
+  parseCheckCronToHours,
+  parseDailyCronToTime,
+  statusText
+} from './utils'
 
 const app = document.querySelector('#app')
 
@@ -7,73 +14,128 @@ app.innerHTML = `
   <div class="container">
     <h1>Manga Update Platform</h1>
 
-    <div class="card">
-      <h2>Search & One-Click Subscribe</h2>
-      <div class="actions">
-        <select id="sourceSelect"><option value="copymanga">CopyManga</option></select>
-        <input id="searchInput" placeholder="keyword" />
-        <button id="searchBtn">Search</button>
-      </div>
-      <table id="searchTable">
-        <thead><tr><th>Cover</th><th>Comic</th><th>Action</th></tr></thead>
-        <tbody></tbody>
-      </table>
-      <div id="searchPager" class="search-pager"></div>
+    <div class="tab-nav" role="tablist" aria-label="Main Views">
+      <button class="tab-btn is-active" data-tab="general" type="button">General</button>
+      <button class="tab-btn" data-tab="copymanga" type="button">CopyManga</button>
+      <button class="tab-btn" data-tab="kxo" type="button">KXO</button>
     </div>
 
-    <div class="card">
-      <h2>Subscriptions</h2>
-      <div class="actions">
-        <button id="refreshSubs">Refresh</button>
-        <button id="runCheck">Run Check</button>
-        <button id="runSummary">Run Daily Summary</button>
+    <section class="tab-panel is-active" data-panel="general">
+      <div class="card">
+        <h2>Subscriptions</h2>
+        <div class="actions">
+          <button id="refreshSubs" type="button">Refresh</button>
+          <button id="runCheck" type="button">Run Check</button>
+          <button id="runSummary" type="button">Run Daily Summary</button>
+        </div>
+        <p class="field-guide">调试说明：可对某个订阅执行“测试通知”与“模拟更新”。模拟更新仅用于验证链路，不会进入自动汇总推送。</p>
+        <table id="subsTable">
+          <thead><tr><th>ID</th><th>Cover</th><th>Source</th><th>Title</th><th>Status</th><th>Last Seen</th><th>Action</th></tr></thead>
+          <tbody></tbody>
+        </table>
       </div>
-      <p class="field-guide">调试说明：可对某个订阅执行“测试通知”与“模拟更新”。模拟更新仅用于验证链路，不会进入当日自动汇总推送。</p>
-      <table id="subsTable">
-        <thead><tr><th>ID</th><th>Source</th><th>Title</th><th>Status</th><th>Last Seen</th><th>Action</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
 
-    <div class="card">
-      <h2>Schedules & Settings</h2>
-      <div class="grid">
-        <label>Timezone <select id="timezone"></select></label>
-        <label>Check Cron <input id="checkCron" /></label>
-        <label>Daily Summary Cron <input id="dailyCron" /></label>
-        <label>Webhook URL <input id="webhookUrl" /></label>
+      <div class="card">
+        <h2>Schedules & General Settings</h2>
+        <div class="grid">
+          <label>Timezone <select id="timezone"></select></label>
+          <label>每几小时检查一次 <input id="checkEveryHours" type="number" min="1" max="24" step="1" /></label>
+          <label>每日汇总时间 <input id="dailySummaryTime" type="time" /></label>
+          <label>Check Cron（高级） <input id="checkCron" /></label>
+          <label>Daily Summary Cron（高级） <input id="dailyCron" /></label>
+          <label>Webhook URL <input id="webhookUrl" /></label>
+        </div>
+        <div class="actions" style="margin-top: 8px;">
+          <label class="toggle-option">Timezone Auto (by IP) <input type="checkbox" id="timezoneAuto" /></label>
+          <label class="toggle-option">Webhook Enabled <input type="checkbox" id="webhookEnabled" /></label>
+          <label class="toggle-option">RSS Enabled <input type="checkbox" id="rssEnabled" /></label>
+          <button id="saveGeneralSettings" type="button">Save General Settings</button>
+        </div>
+        <p id="timezoneHint" class="field-guide"></p>
+        <p id="scheduleHint" class="field-guide"></p>
+        <p class="field-guide">配置指南：优先使用“每几小时检查一次”和“每日汇总时间”，高级场景再手动填写 Cron。</p>
       </div>
-      <div class="actions" style="margin-top:8px;">
-        <label><input type="checkbox" id="timezoneAuto" /> Timezone Auto (by IP)</label>
-        <label><input type="checkbox" id="webhookEnabled" /> Webhook Enabled</label>
-        <label><input type="checkbox" id="rssEnabled" /> RSS Enabled</label>
-        <button id="saveSettings">Save Settings</button>
-      </div>
-      <p id="timezoneHint" class="field-guide"></p>
-      <p class="field-guide">配置指南：Timezone Auto 开启后会按当前访问 IP 自动设置时区；关闭后可手动选择时区。Check Cron 控制抓取频率；Daily Summary Cron 控制每日汇总发送时间。汇总会发送尚未汇总的真实更新，避免停机恢复后漏推送。</p>
-    </div>
 
-    <div class="card">
-      <h2>Events</h2>
-      <div class="actions"><button id="refreshEvents">Refresh Events</button><a class="badge" href="/api/notifications/rss.xml" target="_blank">RSS</a></div>
-      <table id="eventsTable">
-        <thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Detected</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
+      <div class="card">
+        <h2>Events</h2>
+        <div class="actions">
+          <button id="refreshEvents" type="button">Refresh Events</button>
+          <a class="badge" href="/api/notifications/rss.xml" target="_blank" rel="noreferrer">RSS</a>
+        </div>
+        <table id="eventsTable">
+          <thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Detected</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="tab-panel" data-panel="copymanga">
+      <div class="card">
+        <h2>CopyManga Search & Subscribe</h2>
+        <div class="actions">
+          <input id="copySearchInput" placeholder="keyword" />
+          <button id="copySearchBtn" type="button">Search CopyManga</button>
+        </div>
+        <table id="copySearchTable">
+          <thead><tr><th>Cover</th><th>Comic</th><th>Action</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div id="copySearchPager" class="search-pager"></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" data-panel="kxo">
+      <div class="card">
+        <h2>KXO Mode</h2>
+        <p class="field-guide">KXO 当前仅支持手动 URL/ID 订阅，不提供站内搜索或账号密码登录入口。</p>
+      </div>
+
+      <div class="card">
+        <h2>Manual KXO Subscription</h2>
+        <div class="actions">
+          <input id="kxoManualRef" placeholder="KXO URL 或 ID（如 /c/20001.htm 或 20001）" />
+          <input id="kxoManualTitle" placeholder="手动标题（可选）" />
+          <button id="addKxoManual" type="button">Add KXO Subscription</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>KXO Settings</h2>
+        <div class="grid">
+          <label>KXO Base URL <input id="kxoBaseUrl" placeholder="https://kzo.moe" /></label>
+          <label>KXO User Agent <input id="kxoUserAgent" /></label>
+        </div>
+        <div class="actions" style="margin-top: 8px;">
+          <button id="testKxoSettings" type="button">Test KXO</button>
+          <button id="saveKxoSettings" type="button">Save KXO Settings</button>
+        </div>
+        <p id="kxoHint" class="field-guide"></p>
+        <p class="field-guide">仅用于 manual subscription 的基础连通配置。账号密码与 Cookie 登录链路已移除。</p>
+      </div>
+    </section>
   </div>
 `
 
-const searchTable = document.querySelector('#searchTable tbody')
-const searchPager = document.querySelector('#searchPager')
 const subsTable = document.querySelector('#subsTable tbody')
 const eventsTable = document.querySelector('#eventsTable tbody')
 const SEARCH_PAGE_SIZE = 20
-let searchKeyword = ''
-let searchPage = 1
-let searchTotal = 0
+let copySearchKeyword = ''
+let copySearchPage = 1
+let copySearchTotal = 0
 
-// When auto-timezone is enabled, manual timezone input must be read-only in UI.
+function setActiveTab(tabName) {
+  const buttons = document.querySelectorAll('.tab-btn')
+  const panels = document.querySelectorAll('.tab-panel')
+
+  for (const button of buttons) {
+    button.classList.toggle('is-active', button.dataset.tab === tabName)
+  }
+
+  for (const panel of panels) {
+    panel.classList.toggle('is-active', panel.dataset.panel === tabName)
+  }
+}
+
 function applyTimezoneInputMode() {
   const auto = document.querySelector('#timezoneAuto').checked
   const timezoneSelect = document.querySelector('#timezone')
@@ -83,11 +145,53 @@ function applyTimezoneInputMode() {
 
 function setTimezoneHint(timezone, timezoneAuto) {
   const hint = document.querySelector('#timezoneHint')
-  if (timezoneAuto) {
-    hint.textContent = `当前自动时区：${timezone}`
+  hint.textContent = timezoneAuto ? `当前自动时区：${timezone}` : `当前手动时区：${timezone}`
+}
+
+function setScheduleHint(checkCron, dailyCron) {
+  const hint = document.querySelector('#scheduleHint')
+  const checkHours = parseCheckCronToHours(checkCron)
+  const dailyTime = parseDailyCronToTime(dailyCron)
+  if (checkHours !== null && dailyTime !== null) {
+    hint.textContent = `当前设置：每 ${checkHours} 小时检查一次；每日 ${dailyTime} 推送汇总。`
     return
   }
-  hint.textContent = `当前手动时区：${timezone}`
+  hint.textContent = '检测到高级 Cron 表达式。可继续使用 Advanced Cron，或改用友好字段重新生成。'
+}
+
+function setKxoHint() {
+  const hint = document.querySelector('#kxoHint')
+  hint.textContent = 'KXO 当前为 manual-only 模式：仅支持手动 URL/ID 订阅与更新检测。'
+}
+
+function applyFriendlyScheduleToCron() {
+  const hoursInput = document.querySelector('#checkEveryHours')
+  const dailyTimeInput = document.querySelector('#dailySummaryTime')
+  const checkCronInput = document.querySelector('#checkCron')
+  const dailyCronInput = document.querySelector('#dailyCron')
+
+  checkCronInput.value = buildCheckCronFromHours(normalizeCheckHours(hoursInput.value))
+  dailyCronInput.value = buildDailyCronFromTime(dailyTimeInput.value)
+  setScheduleHint(checkCronInput.value, dailyCronInput.value)
+}
+
+function applyCronToFriendlySchedule() {
+  const checkCronInput = document.querySelector('#checkCron')
+  const dailyCronInput = document.querySelector('#dailyCron')
+  const hoursInput = document.querySelector('#checkEveryHours')
+  const dailyTimeInput = document.querySelector('#dailySummaryTime')
+
+  const parsedHours = parseCheckCronToHours(checkCronInput.value)
+  if (parsedHours !== null) {
+    hoursInput.value = String(parsedHours)
+  }
+
+  const parsedTime = parseDailyCronToTime(dailyCronInput.value)
+  if (parsedTime !== null) {
+    dailyTimeInput.value = parsedTime
+  }
+
+  setScheduleHint(checkCronInput.value, dailyCronInput.value)
 }
 
 function ensureTimezoneOption(timezone) {
@@ -123,9 +227,20 @@ async function req(path, options = {}) {
     ...options
   })
   if (!response.ok) {
-    throw new Error(await response.text())
+    let detail = await response.text()
+    try {
+      const parsed = JSON.parse(detail)
+      detail = parsed.detail || detail
+    } catch {
+      // Ignore non-json response and bubble raw text for operator diagnostics.
+    }
+    throw new Error(detail)
   }
-  return response.json()
+  const contentType = response.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    return response.json()
+  }
+  return response.text()
 }
 
 async function loadSettings() {
@@ -135,11 +250,19 @@ async function loadSettings() {
   document.querySelector('#timezoneAuto').checked = Boolean(s.timezone_auto)
   document.querySelector('#checkCron').value = s.check_cron
   document.querySelector('#dailyCron').value = s.daily_summary_cron
+  document.querySelector('#checkEveryHours').value = String(parseCheckCronToHours(s.check_cron) ?? 6)
+  document.querySelector('#dailySummaryTime').value = parseDailyCronToTime(s.daily_summary_cron) ?? '21:00'
   document.querySelector('#webhookUrl').value = s.webhook_url
   document.querySelector('#webhookEnabled').checked = s.webhook_enabled
   document.querySelector('#rssEnabled').checked = s.rss_enabled
+
+  document.querySelector('#kxoBaseUrl').value = s.kxo_base_url
+  document.querySelector('#kxoUserAgent').value = s.kxo_user_agent
+
   applyTimezoneInputMode()
   setTimezoneHint(s.timezone, Boolean(s.timezone_auto))
+  setScheduleHint(s.check_cron, s.daily_summary_cron)
+  setKxoHint()
 }
 
 function buildSearchMeta(item) {
@@ -159,55 +282,102 @@ function buildSearchMeta(item) {
   return `最后更新：${latestUpdate} | 最新话：${latestChapters}`
 }
 
-function renderSearchPager() {
-  searchPager.innerHTML = ''
-  if (!searchKeyword) {
+function renderCopySearchPager() {
+  const pager = document.querySelector('#copySearchPager')
+  pager.innerHTML = ''
+  if (!copySearchKeyword) {
     return
   }
 
-  const totalPages = Math.max(1, Math.ceil(searchTotal / SEARCH_PAGE_SIZE))
+  const totalPages = Math.max(1, Math.ceil(copySearchTotal / SEARCH_PAGE_SIZE))
   const prevBtn = document.createElement('button')
   prevBtn.textContent = 'Prev'
-  prevBtn.disabled = searchPage <= 1
+  prevBtn.disabled = copySearchPage <= 1
   prevBtn.addEventListener('click', () => {
-    search(searchPage - 1).catch((err) => alert(err.message))
+    searchCopyManga(copySearchPage - 1).catch((err) => alert(err.message))
   })
 
   const nextBtn = document.createElement('button')
   nextBtn.textContent = 'Next'
-  nextBtn.disabled = searchPage >= totalPages
+  nextBtn.disabled = copySearchPage >= totalPages
   nextBtn.addEventListener('click', () => {
-    search(searchPage + 1).catch((err) => alert(err.message))
+    searchCopyManga(copySearchPage + 1).catch((err) => alert(err.message))
   })
 
   const info = document.createElement('span')
   info.className = 'search-pager-info'
-  info.textContent = `Page ${searchPage}/${totalPages} - Total ${searchTotal}`
+  info.textContent = `Page ${copySearchPage}/${totalPages} - Total ${copySearchTotal}`
 
-  searchPager.appendChild(prevBtn)
-  searchPager.appendChild(nextBtn)
-  searchPager.appendChild(info)
+  pager.appendChild(prevBtn)
+  pager.appendChild(nextBtn)
+  pager.appendChild(info)
 }
 
-async function search(page = 1) {
-  const source = document.querySelector('#sourceSelect').value
-  if (page === 1) {
-    searchKeyword = document.querySelector('#searchInput').value.trim()
+function toCoverProxyUrl(cover) {
+  const raw = typeof cover === 'string' ? cover.trim() : ''
+  if (!raw) {
+    return ''
   }
-  if (!searchKeyword) {
+  if (!/^https?:\/\//i.test(raw)) {
+    return raw
+  }
+  return `/api/cover-proxy?url=${encodeURIComponent(raw)}`
+}
+
+function buildCoverBlock({ cover, title, type }) {
+  const isSearch = type === 'search'
+  const coverClass = isSearch ? 'search-cover' : 'sub-cover'
+  const emptyClass = isSearch ? 'search-cover search-cover-empty' : 'sub-cover sub-cover-empty'
+  const src = toCoverProxyUrl(cover)
+  if (!src) {
+    return `<div class="${emptyClass}">No Cover</div>`
+  }
+  return `
+    <span class="cover-slot">
+      <img class="${coverClass}" src="${src}" alt="${title}" loading="lazy" data-cover-fallback="1" />
+      <div class="${emptyClass} cover-fallback" hidden>No Cover</div>
+    </span>
+  `
+}
+
+function bindCoverFallback(root) {
+  for (const img of root.querySelectorAll('img[data-cover-fallback="1"]')) {
+    img.addEventListener('error', () => {
+      img.style.display = 'none'
+      const fallback = img.parentElement?.querySelector('.cover-fallback')
+      if (fallback) {
+        fallback.hidden = false
+      }
+    }, { once: true })
+  }
+}
+
+async function searchCopyManga(page = 1) {
+  if (page === 1) {
+    copySearchKeyword = document.querySelector('#copySearchInput').value.trim()
+  }
+  if (!copySearchKeyword) {
     return
   }
+
   const data = await req(
-    `/api/search?source=${encodeURIComponent(source)}&q=${encodeURIComponent(searchKeyword)}&page=${page}`
+    `/api/search?source=copymanga&q=${encodeURIComponent(copySearchKeyword)}&page=${page}`
   )
-  searchPage = data.page
-  searchTotal = data.total
-  searchTable.innerHTML = ''
+
+  copySearchPage = data.page
+  copySearchTotal = data.total
+
+  const table = document.querySelector('#copySearchTable tbody')
+  table.innerHTML = ''
+
   for (const item of data.items) {
     const tr = document.createElement('tr')
-    const coverCell = item.cover
-      ? `<img class="search-cover" src="${item.cover}" alt="${item.title}" loading="lazy" />`
-      : `<div class="search-cover search-cover-empty">No Cover</div>`
+    const coverCell = buildCoverBlock({
+      cover: item.cover || '',
+      title: item.title || 'cover',
+      type: 'search'
+    })
+
     tr.innerHTML = `
       <td>${coverCell}</td>
       <td>
@@ -215,25 +385,33 @@ async function search(page = 1) {
         <div class="search-author">Author: ${item.author || '-'}</div>
         <div class="search-meta">${buildSearchMeta(item)}</div>
       </td>
-      <td><button>Subscribe</button></td>
+      <td><button type="button">Subscribe</button></td>
     `
+
     tr.querySelector('button').addEventListener('click', async () => {
-      // Persist search metadata so subscription list can show Last Seen immediately.
       await req('/api/subscriptions', {
         method: 'POST',
         body: JSON.stringify({
-          source_code: source,
+          source_code: 'copymanga',
           item_id: item.item_id,
           item_title: item.title,
           group_word: item.group_word || 'default',
-          item_meta: { ...(item.meta || {}), group_word: item.group_word || 'default' }
+          // Persist cover + metadata so subscription list can render richer state immediately.
+          item_meta: {
+            ...(item.meta || {}),
+            cover: item.cover || '',
+            group_word: item.group_word || 'default'
+          }
         })
       })
       await loadSubscriptions()
     })
-    searchTable.appendChild(tr)
+
+    bindCoverFallback(tr)
+    table.appendChild(tr)
   }
-  renderSearchPager()
+
+  renderCopySearchPager()
 }
 
 function formatLastSeenTime(value) {
@@ -247,6 +425,15 @@ function formatLastSeenTime(value) {
   return date.toLocaleString()
 }
 
+function buildSubscriptionCover(sub) {
+  const cover = typeof sub?.item_meta?.cover === 'string' ? sub.item_meta.cover.trim() : ''
+  return buildCoverBlock({
+    cover,
+    title: sub?.item_title || 'cover',
+    type: 'subscription'
+  })
+}
+
 async function loadSubscriptions() {
   const subs = await req('/api/subscriptions')
   subsTable.innerHTML = ''
@@ -256,6 +443,7 @@ async function loadSubscriptions() {
     const tr = document.createElement('tr')
     tr.innerHTML = `
       <td>${sub.id}</td>
+      <td>${buildSubscriptionCover(sub)}</td>
       <td>${sub.source_code}</td>
       <td>${sub.item_title}</td>
       <td>${sub.status}</td>
@@ -265,28 +453,32 @@ async function loadSubscriptions() {
       </td>
       <td>
         <div class="row-actions">
-          <button data-action="simulate">Sim Update</button>
-          <button data-action="notify">Test Notify</button>
-          <button data-action="delete">Delete</button>
+          <button data-action="simulate" type="button">Sim Update</button>
+          <button data-action="notify" type="button">Test Notify</button>
+          <button data-action="delete" type="button">Delete</button>
         </div>
       </td>
     `
+
     tr.querySelector('[data-action="delete"]').addEventListener('click', async () => {
       await req(`/api/subscriptions/${sub.id}`, { method: 'DELETE' })
       await loadSubscriptions()
     })
+
     tr.querySelector('[data-action="simulate"]').addEventListener('click', async () => {
-      // Simulated event is for diagnostics only and is excluded from auto summary.
       const out = await req(`/api/subscriptions/${sub.id}/debug/simulate-update`, { method: 'POST' })
       alert(`simulated event id=${out.event_id}`)
       await loadEvents()
     })
+
     tr.querySelector('[data-action="notify"]').addEventListener('click', async () => {
       const out = await req(`/api/subscriptions/${sub.id}/debug/notify-test`, { method: 'POST' })
       const delivered = Array.isArray(out.delivered_channels) ? out.delivered_channels.join(',') : '-'
       const skipped = Array.isArray(out.skipped_channels) ? out.skipped_channels.join(',') : '-'
       alert(`notify test status=${out.status}\ndelivered=${delivered}\nskipped=${skipped}`)
     })
+
+    bindCoverFallback(tr)
     subsTable.appendChild(tr)
   }
 }
@@ -301,7 +493,7 @@ async function loadEvents() {
   }
 }
 
-async function saveSettings() {
+async function saveGeneralSettings() {
   const timezoneAuto = document.querySelector('#timezoneAuto').checked
   const payload = {
     timezone_auto: timezoneAuto,
@@ -314,17 +506,66 @@ async function saveSettings() {
   if (!timezoneAuto) {
     payload.timezone = document.querySelector('#timezone').value
   }
-  // In auto mode backend determines timezone from request IP; do not force manual value.
+
   await req('/api/settings', {
     method: 'PUT',
     body: JSON.stringify(payload)
   })
   await loadSettings()
-  alert('Settings saved')
+  alert('General settings saved')
 }
 
-document.querySelector('#searchBtn').addEventListener('click', () => {
-  search(1).catch((err) => alert(err.message))
+async function saveKxoSettings() {
+  const payload = {
+    kxo_base_url: document.querySelector('#kxoBaseUrl').value.trim(),
+    kxo_user_agent: document.querySelector('#kxoUserAgent').value.trim(),
+    // Force guest/manual-only runtime to avoid stale login-mode residues.
+    kxo_auth_mode: 'guest',
+    kxo_remember_session: false,
+    kxo_cookie: ''
+  }
+
+  await req('/api/settings', {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  })
+  await loadSettings()
+  alert('KXO settings saved')
+}
+
+async function addKxoManualSubscription() {
+  const ref = document.querySelector('#kxoManualRef').value.trim()
+  const itemTitle = document.querySelector('#kxoManualTitle').value.trim()
+  if (!ref) {
+    return
+  }
+
+  await req('/api/subscriptions/manual-kxo', {
+    method: 'POST',
+    body: JSON.stringify({
+      ref,
+      item_title: itemTitle || null
+    })
+  })
+
+  document.querySelector('#kxoManualRef').value = ''
+  document.querySelector('#kxoManualTitle').value = ''
+  await loadSubscriptions()
+}
+
+async function testKxoSettings() {
+  const out = await req('/api/settings/kxo/test', { method: 'POST' })
+  alert(`KXO test status=${out.status}\n${out.detail || ''}`)
+}
+
+for (const button of document.querySelectorAll('.tab-btn')) {
+  button.addEventListener('click', () => {
+    setActiveTab(button.dataset.tab)
+  })
+}
+
+document.querySelector('#copySearchBtn').addEventListener('click', () => {
+  searchCopyManga(1).catch((err) => alert(err.message))
 })
 
 document.querySelector('#refreshSubs').addEventListener('click', () => {
@@ -335,8 +576,20 @@ document.querySelector('#refreshEvents').addEventListener('click', () => {
   loadEvents().catch((err) => alert(err.message))
 })
 
-document.querySelector('#saveSettings').addEventListener('click', () => {
-  saveSettings().catch((err) => alert(err.message))
+document.querySelector('#saveGeneralSettings').addEventListener('click', () => {
+  saveGeneralSettings().catch((err) => alert(err.message))
+})
+
+document.querySelector('#saveKxoSettings').addEventListener('click', () => {
+  saveKxoSettings().catch((err) => alert(err.message))
+})
+
+document.querySelector('#testKxoSettings').addEventListener('click', () => {
+  testKxoSettings().catch((err) => alert(err.message))
+})
+
+document.querySelector('#addKxoManual').addEventListener('click', () => {
+  addKxoManualSubscription().catch((err) => alert(err.message))
 })
 
 document.querySelector('#timezoneAuto').addEventListener('change', () => {
@@ -350,6 +603,22 @@ document.querySelector('#timezone').addEventListener('change', () => {
   const timezone = document.querySelector('#timezone').value
   const timezoneAuto = document.querySelector('#timezoneAuto').checked
   setTimezoneHint(timezone, timezoneAuto)
+})
+
+document.querySelector('#checkEveryHours').addEventListener('change', () => {
+  applyFriendlyScheduleToCron()
+})
+
+document.querySelector('#dailySummaryTime').addEventListener('change', () => {
+  applyFriendlyScheduleToCron()
+})
+
+document.querySelector('#checkCron').addEventListener('input', () => {
+  applyCronToFriendlySchedule()
+})
+
+document.querySelector('#dailyCron').addEventListener('input', () => {
+  applyCronToFriendlySchedule()
 })
 
 document.querySelector('#runCheck').addEventListener('click', async () => {
@@ -367,11 +636,9 @@ document.querySelector('#runSummary').addEventListener('click', async () => {
 
 async function bootstrap() {
   await loadTimezoneOptions()
-  // Fetch settings first to ensure timezone hint/control state is accurate on first paint.
   await Promise.all([loadSettings(), loadSubscriptions(), loadEvents()])
 }
 
 bootstrap().catch((err) => {
   console.error(err)
 })
-

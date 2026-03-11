@@ -36,6 +36,11 @@ class SubscriptionCreate(BaseModel):
     item_meta: dict[str, Any] = Field(default_factory=dict)
 
 
+class KxoManualSubscriptionCreate(BaseModel):
+    ref: str = Field(min_length=1)
+    item_title: str | None = None
+
+
 class SubscriptionUpdate(BaseModel):
     item_title: str | None = None
     group_word: str | None = None
@@ -87,6 +92,11 @@ class SettingsResponse(BaseModel):
     webhook_url: str
     rss_enabled: bool
     app_base_url: str
+    kxo_base_url: str
+    kxo_auth_mode: str
+    kxo_cookie_configured: bool
+    kxo_remember_session: bool
+    kxo_user_agent: str
 
 
 class SettingsUpdate(BaseModel):
@@ -98,6 +108,11 @@ class SettingsUpdate(BaseModel):
     webhook_url: str | None = None
     rss_enabled: bool | None = None
     app_base_url: str | None = None
+    kxo_base_url: str | None = None
+    kxo_auth_mode: str | None = None
+    kxo_cookie: str | None = None
+    kxo_remember_session: bool | None = None
+    kxo_user_agent: str | None = None
 
 
 class JobRunResponse(BaseModel):

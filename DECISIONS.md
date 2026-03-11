@@ -238,3 +238,81 @@
 - Impact:
   - Security workflow becomes more robust and easier to debug.
   - Dependency vulnerability findings remain blocking at `HIGH/CRITICAL` severity.
+
+## D-026 Friendly Schedule Controls with Advanced Cron Fallback
+- Date: 2026-03-11
+- Status: Accepted
+- Context: Raw cron input (`0 */6 * * *`) is not user-friendly for normal users configuring schedule in UI.
+- Decision:
+  - Add friendly schedule controls in settings UI:
+    - check every N hours
+    - daily summary time (`HH:MM`)
+  - Keep advanced cron fields for compatibility and non-standard schedules.
+  - Friendly controls generate standard cron expressions; advanced fields remain source of truth for save payload.
+- Reason: Improve usability without breaking existing cron-based backend contract or custom schedules.
+- Impact:
+  - FR-005 usability is improved with minimal backend change.
+  - Existing custom cron users keep full compatibility.
+
+## D-027 KXO Dual-Path Integration and Cookie Persistence Policy
+- Date: 2026-03-11
+- Status: Accepted
+- Context: KXO source probing confirmed:
+  - update data can be fetched via detail-token + `book_data.php` in same session
+  - site search is authentication-gated and requires valid cookie session
+  - account/password login automation is unstable in this environment
+- Decision:
+  - Introduce KXO source as dual-path v1:
+    - `guest` mode: manual URL/ID subscription + scheduled update detection
+    - `cookie` mode: search + one-click subscription when valid cookie is configured
+  - Keep credential model password-free:
+    - no account/password storage path
+    - cookie non-persistent by default (in-memory override)
+    - optional persistence only when `kxo_remember_session=true`
+  - Map missing/invalid auth to explicit API errors (`auth_required` / `session_invalid`) instead of 500.
+- Reason: Delivers usable KXO integration quickly while reducing security risk and avoiding brittle login automation dependency.
+- Impact:
+  - Backend added `KxoAdapter`, manual KXO subscription endpoint, and KXO settings test endpoint.
+  - Settings schema now includes KXO runtime options and cookie-configured status.
+  - Frontend gained KXO settings UI, manual-add entry, and auth guidance.
+
+## D-028 KXO One-Shot Credential Login Entry (No Password Persistence)
+- Date: 2026-03-11
+- Status: Accepted
+- Context: User requested in-app account/password login entry for KXO while keeping security baseline that credentials must not be stored.
+- Decision:
+  - Add `POST /api/settings/kxo/login` for one-shot credential login.
+  - Adapter performs credential submit and returns session cookie only.
+  - Username/password are never persisted to DB/settings and never echoed by settings API.
+  - Cookie persistence still follows existing `remember_session` policy (`false` in-memory only, `true` persisted).
+- Reason: Improves operability for users who prefer direct credential login while preserving established no-password-storage security constraints.
+- Impact:
+  - Frontend KXO settings now includes credential login form.
+  - Backend supports runtime cookie acquisition from credentials without changing core scheduling/search contracts.
+
+## D-029 KXO Scope Rollback to Manual-Only Path
+- Date: 2026-03-11
+- Status: Accepted
+- Context: Runtime reliability and session fragility of KXO auth/search path caused repeated operator confusion and unstable behavior.
+- Decision:
+  - KXO scope is rolled back to manual-only in current phase.
+  - Keep `manual URL/ID subscription + update detection`.
+  - Remove KXO credential login entry and disable KXO search API path with a clear manual-only error.
+  - Keep KXO base URL / user-agent connectivity settings and manual subscription endpoint.
+- Reason: Prioritize stable update-detection workflow over fragile auth/search coupling.
+- Impact:
+  - Supersedes D-027 `cookie search` path and D-028 credential-login path.
+  - Frontend KXO tab now focuses on manual add + connectivity settings only.
+  - Backend `GET /api/search?source=kxo` returns manual-only guidance instead of auth/session flows.
+
+## D-030 Cover Proxy with Host Allowlist
+- Date: 2026-03-11
+- Status: Accepted
+- Context: User reported subscription covers consistently failing to render when browser fetched source-host image URLs directly.
+- Decision:
+  - Add backend `GET /api/cover-proxy` endpoint to fetch cover images server-side for frontend rendering.
+  - Restrict proxy target hosts to known source/cdn suffixes (`mangafunb.fun`, `mangacopy.com`, `mxomo.com`, `kzo.moe`, `kxo.moe`) to avoid open-proxy risk.
+- Reason: Improve cover render stability under hotlink/policy/network variability while keeping security boundary explicit.
+- Impact:
+  - Frontend cover display now uses proxied URLs with fallback placeholder on load error.
+  - API surface gains a constrained media-proxy endpoint for UI only.

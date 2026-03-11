@@ -62,10 +62,35 @@ class CopyMangaAdapter:
                 pass
         return text.strip()
 
+    @staticmethod
+    def _normalize_cover_url(value: str) -> str:
+        text = unescape(value or "").replace("\\/", "/").strip()
+        if not text:
+            return ""
+        if text.startswith("//"):
+            return f"https:{text}"
+        return text
+
     @classmethod
     def _extract_web_meta(cls, html: str) -> dict:
         meta: dict[str, str | list[str]] = {}
         flags = re.IGNORECASE | re.DOTALL
+
+        cover_patterns = [
+            r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+            r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']',
+            r'"cover"\s*:\s*"([^"]+)"',
+        ]
+        for pattern in cover_patterns:
+            match = re.search(pattern, html, flags=flags)
+            if not match:
+                continue
+            cover = cls._normalize_cover_url(match.group(1))
+            if cover:
+                meta["cover"] = cover
+                break
 
         date_patterns = [
             r'"datetime_updated"\s*:\s*"([^"]+)"',
@@ -251,6 +276,15 @@ class CopyMangaAdapter:
         meta.setdefault("latest_chapters", [])
         self._write_cached_web_meta(item_id, meta)
         return meta
+
+    def fetch_item_snapshot(self, item_id: str, item_meta: dict | None = None) -> dict:
+        _ = item_meta
+        meta = self._fetch_web_meta(item_id)
+        return {
+            "cover": meta.get("cover", ""),
+            "latest_update_time": meta.get("latest_update_time", ""),
+            "latest_chapters": meta.get("latest_chapters", []),
+        }
 
     def _enrich_search_items(self, items: list[AdapterSearchResult]) -> None:
         candidates = [item for item in items if item.item_id]

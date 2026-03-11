@@ -17,7 +17,14 @@ _DEFAULTS = {
     "webhook_url": settings.webhook_url,
     "rss_enabled": settings.rss_enabled,
     "app_base_url": settings.app_base_url,
+    "kxo_base_url": settings.kxo_base_url,
+    "kxo_auth_mode": settings.kxo_auth_mode,
+    "kxo_cookie": settings.kxo_cookie,
+    "kxo_user_agent": settings.kxo_user_agent,
+    "kxo_remember_session": settings.kxo_remember_session,
 }
+
+_EPHEMERAL_OVERRIDES: dict[str, Any] = {}
 
 
 def get_runtime_settings(db: Session) -> dict[str, Any]:
@@ -26,6 +33,7 @@ def get_runtime_settings(db: Session) -> dict[str, Any]:
     records = db.query(SystemSetting).all()
     for row in records:
         values[row.key] = json.loads(row.value_json)
+    values.update(_EPHEMERAL_OVERRIDES)
     return values
 
 
@@ -41,3 +49,10 @@ def upsert_settings(db: Session, updates: dict[str, Any]) -> dict[str, Any]:
             row.value_json = json.dumps(value, ensure_ascii=False)
     db.commit()
     return get_runtime_settings(db)
+
+
+def upsert_ephemeral_settings(updates: dict[str, Any]) -> None:
+    for key, value in updates.items():
+        if value is None:
+            continue
+        _EPHEMERAL_OVERRIDES[key] = value

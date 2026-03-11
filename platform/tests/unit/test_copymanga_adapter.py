@@ -79,6 +79,25 @@ def test_extract_web_meta_parses_update_time_and_latest_chapters():
     assert meta["latest_chapters"] == ["\u7b2c83\u8bdd", "\u7b2c01\u8a71"]
 
 
+def test_extract_web_meta_parses_cover_from_meta_and_json():
+    html = """
+    <html>
+      <head>
+        <meta content="https://img.copy.test/cover-a.jpg" property="og:image" />
+      </head>
+    </html>
+    """
+    meta = CopyMangaAdapter._extract_web_meta(html)
+    assert meta["cover"] == "https://img.copy.test/cover-a.jpg"
+
+    json_html = (
+        r'<script>window.__NUXT__={"comic":{"cover":"https:\/\/img.copy.test\/cover-b.jpg"}};'
+        r"</script>"
+    )
+    meta2 = CopyMangaAdapter._extract_web_meta(json_html)
+    assert meta2["cover"] == "https://img.copy.test/cover-b.jpg"
+
+
 def test_extract_web_meta_parses_json_embedded_update_and_non_standard_chapter_name():
     html = """
     <script>

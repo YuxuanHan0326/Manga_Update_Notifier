@@ -12,6 +12,14 @@ class AdapterUpstreamError(AdapterError):
     """Raised when upstream source returns invalid or unusable responses."""
 
 
+class AdapterAuthRequiredError(AdapterError):
+    """Raised when source operation requires explicit authentication configuration."""
+
+
+class AdapterSessionInvalidError(AdapterError):
+    """Raised when configured authentication exists but session is no longer valid."""
+
+
 @dataclass
 class AdapterSearchResult:
     item_id: str

@@ -17,18 +17,31 @@
 
 | ID | Task | Req | Started | Notes |
 |---|---|---|---|---|
-| T-035 | Protocol/doc governance refresh + comment hardening + public-repo cleanup | NFR-002, NFR-001, FR-008 | 2026-03-09 | Protocol/docs/comments/public repo work completed; pending final Docker runtime verification after daemon recovery |
+| None | - | - | - | - |
 
 ## BLOCKED
 
 | ID | Task | Req | Blocker | Notes |
 |---|---|---|---|---|
-| T-036 | Re-run mandatory Docker runtime verification for current implementation round | FR-008 | Local Docker daemon unavailable (`dockerDesktopLinuxEngine` pipe not found) | Required close-out step for T-035 once daemon is restored |
+| None | - | - | - | - |
 
 ## DONE
 
 | ID | Task | Req | Completed | Notes |
 |---|---|---|---|---|
+| T-049 | Normalize garbled markdown docs and prepare a clean repository commit | NFR-002 | 2026-03-11 | Repaired markdown garble/question-mark corruption in active ledger docs and completed commit handoff preparation |
+| T-048 | Debug KXO cover extraction failure and fix if extraction path is broken | FR-003, NFR-001, NFR-002 | 2026-03-11 | Root cause: `mxomo` cover CDN rejects specific referer strategy in proxy path (403); fixed proxy referer fallback order and verified KXO cover proxy returns image 200 |
+| T-047 | Fix subscription cover render failure and schedule checkbox alignment | FR-003, FR-005, NFR-001, NFR-002 | 2026-03-11 | Added constrained cover proxy endpoint + frontend cover fallback binding; adjusted schedule toggle layout (label left, checkbox right/near); validation and Docker runtime checks passed |
+| T-046 | Fix subscription `No Cover` regression across CopyManga/KXO (source extraction + historical backfill) | FR-003, FR-004, NFR-001, NFR-002 | 2026-03-11 | Expanded KXO/CopyManga cover extraction fallback and added on-read subscription cover backfill for historical rows; tests and Docker verification passed |
+| T-045 | Scope-change: keep KXO manual subscription only, remove login/search path, and add subscription cover display | FR-003, FR-004, NFR-002, NFR-005 | 2026-03-11 | Removed KXO login/search UI+API path, enforced KXO manual-only search response, added subscription cover column/rendering, and passed full validation + Docker runtime verification |
+| T-044 | Fix schedule checkbox layout regression and add non-persistent KXO manual account/password login entry | FR-004, FR-005, NFR-001, NFR-002, NFR-005 | 2026-03-11 | Fixed checkbox layout with checkbox-specific styles; added one-shot KXO credential login endpoint/UI (password not persisted); validation passed (`ruff`, `pytest 32 passed`, frontend lint/test/build, Docker runtime health) |
+| T-043 | Refactor UI into source-focused tabs/pages (General / CopyManga / KXO) for better manageability | FR-003, FR-004, FR-005, NFR-002 | 2026-03-11 | Split mixed single-page frontend into three tabs with source-specific search panes; kept backend API unchanged; frontend lint/test/build and Docker runtime verification passed |
+| T-042 | Align `PROJECT_BRIEF.md` and `REQUIREMENTS.md` with delivered KXO dual-path implementation | NFR-002 | 2026-03-11 | Updated brief/requirements to reflect KXO dual-path scope, auth error contract, and cookie persistence policy; docs-only round (no Docker build required) |
+| T-041 | Implement KXO source dual-path v1 (guest updates + cookie search) | FR-001, FR-003, FR-004, FR-005, NFR-001, NFR-002 | 2026-03-11 | Added `KxoAdapter`, KXO runtime settings, manual KXO subscription endpoint, auth-safe search errors, frontend KXO controls, test coverage (backend 31 passed + frontend lint/test/build), and Docker runtime verification passed |
+| T-040 | Rotate oversized worklog after schedule UX round | NFR-002 | 2026-03-11 | `WORKLOG.md` exceeded 150 lines and was archived to `worklog_archive/WORKLOG_ARCHIVE_20260311_024526.md`; new concise worklog initialized |
+| T-039 | Improve schedule configuration UX (friendly controls over cron) | FR-005, NFR-002 | 2026-03-11 | Added friendly schedule controls (hours/time) with advanced cron compatibility, plus frontend utility tests |
+| T-036 | Re-run mandatory Docker runtime verification for current implementation round | FR-008 | 2026-03-11 | Docker daemon recovered; `docker compose up -d --build`, `docker compose ps`, and `/api/health` succeeded |
+| T-035 | Protocol/doc governance refresh + comment hardening + public-repo cleanup | NFR-002, NFR-001, FR-008 | 2026-03-11 | Closed after successful runtime Docker verification and ledger sync |
 | T-038 | Repair failing GitHub security workflow (audit + trivy) | NFR-005, NFR-002 | 2026-03-10 | Split security audits into independent jobs, switched trivy scan to container path, upgraded FastAPI baseline to address Starlette CVE findings |
 | T-034 | Fix missing prefill for subscription last-seen time/chapter on create | FR-003, FR-004, NFR-001 | 2026-03-09 | Added create-time prefill from search metadata (`latest_chapters`, `latest_update_time`) and covered with integration/runtime validation |
 | T-037 | Align requirement/architecture docs with current implementation and protocol update | NFR-002 | 2026-03-09 | Updated `REQUIREMENTS.md`/`ARCHITECTURE.md` and synced protocol wording in `PROMPT_TEMPLATE.md`; approved before editing requirements |

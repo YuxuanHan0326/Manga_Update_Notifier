@@ -1,117 +1,62 @@
-﻿# Worklog
+# Worklog
 
 ## Archive Summary
-- Archive file: `worklog_archive/WORKLOG_ARCHIVE_20260309_200314.md`
-- Reason: active WORKLOG exceeded 150 lines and was rotated per protocol.
-- Key carry-over:
-  - Phase 1 core platform remains operational (search/subscriptions/check/summary/webhook/rss).
-  - Latest rounds fixed timezone auto-detection, subscription prefill, and summary backlog behavior.
-  - Docker runtime verification flow is already integrated as mandatory for code-change rounds.
+- Archive file: worklog_archive/WORKLOG_ARCHIVE_20260311_061924.md
+- Reason: active WORKLOG.md exceeded 150 lines and was rotated per protocol.
+- Key outcomes carried forward:
+  - Completed subscription cover bugfix for CopyManga + KXO.
+  - Added on-read backfill for historical subscriptions missing `item_meta.cover`.
+  - Added regression tests (unit + integration) and validation passed.
+  - Docker runtime verification passed (`compose up`, container `Up`, `/api/health=200`).
 
-## 2026-03-09
+## 2026-03-11
 
-### 01. Round Bootstrap
-- Re-read all memory/protocol files and locked scope to:
-  - protocol update
-  - docs refresh
-  - code comment hardening
-  - public-repo hygiene
-- Created `T-035` as `IN_PROGRESS` in `TASKS.md`.
-
-### 02. Worklog Rotation (Auto)
-- Trigger: `WORKLOG.md` exceeded 150 lines.
-- Action: archived old worklog to `worklog_archive/WORKLOG_ARCHIVE_20260309_200314.md` and created fresh concise `WORKLOG.md`.
-
-### 03. Protocol and Governance Update
-- Updated `PROMPT_TEMPLATE.md`:
-  - corrected `TASKS.md` naming
-  - added mandatory docs-sync requirement (`docs/*` when needed)
-  - added mandatory meaningful code-comment requirement for code changes.
-- Added decision `D-023` in `DECISIONS.md`.
-
-### 04. Docs/Public-Repo Hardening
-- Updated root docs/config:
-  - `README.md` (public-collab and `.env.example` guidance)
-  - `.gitignore` (env/secrets/log/audit/coverage ignores)
-  - `.editorconfig` (UTF-8/LF/indent baseline for public collaboration)
-  - `docs/nas-ops-runbook.md` (public-collab safety reminder)
-- Added:
-  - `CONTRIBUTING.md`
-  - `SECURITY.md`
-  - `platform/.env.example`
-
-### 05. Code Comment Sweep
-- Added targeted debug/maintenance comments in core paths:
-  - backend startup/lifespan, API timezone & debug endpoints, scheduler reload semantics
-  - checker dedupe/baseline logic, summary candidate isolation, timezone lookup fallback
-  - config/db/models/notifications/adapter registry/bootstrap
-  - CopyManga adapter cache/parser fallback points
-  - frontend main flow and settings/subscription/debug action semantics
-
-### 06. Validation
-- Backend checks:
-  - `ruff check platform/backend/app platform/tests` passed
-  - `pytest -q platform/tests` passed (`24 passed`)
-- Frontend checks:
-  - `npm run lint` passed
-  - `npm run test` passed
-  - `npm run build` passed
-
-### 07. Docker Verification Blocked
-- Attempted mandatory runtime verification:
-  - `docker compose up -d --build`
-  - `docker compose ps`
-  - `GET http://localhost:8000/api/health`
-- Result: blocked by Docker daemon unavailability (`//./pipe/dockerDesktopLinuxEngine` not found / connection failed).
-- Follow-up recorded in `NEXT_STEP.md`.
-
-### 08. Requirement/Architecture Alignment (Approved)
-- Confirmed developer approval before editing `REQUIREMENTS.md`.
-- Updated `REQUIREMENTS.md`:
-  - FR-003 acceptance includes subscription Last Seen display + create-time prefill behavior.
-  - FR-004 acceptance includes pagination/cover/metadata display expectations.
-  - FR-005 acceptance includes manual timezone dropdown requirement.
-- Updated `ARCHITECTURE.md`:
-  - Added timezone service and current debug/timezone API endpoint notes.
-  - Clarified summary candidate exclusion for `debug:` events.
-  - Clarified checker metadata persistence and CopyManga meta-enrichment cache behavior.
-
-### 09. Protocol Sync (Developer Manual Change)
-- Synced `PROMPT_TEMPLATE.md` wording:
-  - ledger update line includes `ARCHITECTURE.md` update condition
-  - explicit approval gate for `REQUIREMENTS.md` / `PROJECT_BRIEF.md` edits.
-- Added decision `D-024` to persist this protocol boundary.
-
-### 10. Docs-Round Governance
-- Reviewed root `README.md` and `.gitignore`; no content change required for this round.
-- This is a docs-only round (no program-body changes), so Docker verification is skipped by protocol exception.
-
-### 11. Round Start (Security Workflow Repair)
-- Re-read memory files and locked scope to GitHub Actions security failures.
-- Created `T-038` as `IN_PROGRESS` in `TASKS.md`.
-- Root-causes confirmed from user-provided logs:
-  - `pip-audit` failed on Starlette CVEs.
-  - `trivy-action` failed before scan at setup/install phase.
-
-### 12. Security CI Implementation
-- Updated `.github/workflows/security.yml`:
-  - split `dependency-audit` into independent `python-audit` and `frontend-audit`.
-  - replaced `aquasecurity/trivy-action` path with direct Trivy container scan command to avoid setup binary install failure.
-  - kept `HIGH/CRITICAL` blocking behavior and always upload SARIF artifact.
-- Updated `platform/backend/requirements.txt`:
-  - upgraded `fastapi` baseline to `0.120.0` to resolve vulnerable Starlette lineage reported by `pip-audit`.
-
-### 13. Validation + Runtime Attempt
-- Local checks passed:
-  - `ruff check platform/backend/app platform/tests`
-  - `pytest -q platform/tests` (`24 passed`)
-- Docker verification attempted per protocol:
-  - `docker compose up -d --build`
-  - `docker compose ps`
-  - `GET /api/health`
-- Result: still blocked by local Docker daemon pipe unavailability.
-
-### 14. Ledger + Docs Sync
-- Updated `README.md` security-check section to reflect current workflow jobs.
-- Added decision `D-025` for security workflow hardening strategy.
-- Updated `NEXT_STEP.md`, `TASKS.md` (T-038 moved to DONE), and this worklog.
+### 01. Worklog Rotation
+- Rotated oversized WORKLOG (>150 lines) into archive.
+- Recreated concise WORKLOG with handoff summary.
+### 02. Final Validation Snapshot
+- Backend lint/tests passed (`ruff`, `pytest unit=23`, `pytest integration=10`).
+- Frontend checks passed (`npm run lint`, `npm run test`, `npm run build`; test/build required elevated mode due sandbox `spawn EPERM`).
+- Runtime verified: `docker compose ps` is `Up`, `/api/health` returned `200`.
+### 03. Bugfix Round Start: Cover Render + Schedule Tick Alignment
+- Marked `T-047` as `IN_PROGRESS` and updated `NEXT_STEP.md`.
+- Planned to fix two user-facing issues in one minimal round: subscription cover rendering failure and schedule toggle tick alignment.
+### 04. Bugfix Round: Cover Render + Schedule Toggle Alignment
+- Diagnosis:
+  - `/api/subscriptions` returned valid cover URLs, but browser-side direct fetch failed under source hotlink/host policy.
+- Backend change:
+  - Added `GET /api/cover-proxy` in `app/api.py` with explicit allowed host suffix checks to avoid open-proxy behavior.
+- Frontend change:
+  - Updated `frontend/src/main.js` to render cover images through `/api/cover-proxy` and keep `No Cover` fallback on load failure.
+  - Updated `frontend/src/main.js` + `frontend/src/style.css` to align schedule toggle checkbox next to label text.
+- Validation:
+  - `ruff` passed.
+  - `pytest unit` passed (23).
+  - `pytest integration` passed (12).
+  - `npm run lint/test/build` passed (test/build required elevated mode due esbuild `spawn EPERM` in sandbox).
+  - Docker runtime verification passed (`compose up -d --build`, `compose ps`, `/api/health`).
+- Runtime smoke:
+  - `/api/cover-proxy` returned `200 image/jpeg` for tested cover URLs and image rendering recovered.
+### 05. Bugfix Round Start: KXO Cover Extraction Debug
+- Set `T-048` to IN_PROGRESS and updated `NEXT_STEP.md` for KXO cover diagnostic scope.
+- Plan: inspect live KXO snapshot output, confirm cover URL format/reachability, then apply minimal parser fix if needed.
+### 06. KXO Cover Extraction Debug and Fix
+- Diagnostic result:
+  - KXO `item_meta.cover` exists (adapter extraction path works).
+  - Failure point is cover proxy fetch policy for `kmimg.mxomo.com`: previous referer strategy produced upstream `403`.
+- Implementation:
+  - `app/api.py` cover proxy now uses host-specific referer fallback for `mxomo` hosts (`None -> https://kzo.moe/ -> https://kxo.moe/`).
+  - Added helper `_cover_referer_candidates` and kept allowlist boundary unchanged.
+- Validation:
+  - `ruff` passed.
+  - `pytest unit` passed (23).
+  - `pytest integration` passed (13).
+  - Docker rebuild + runtime check passed (`compose up -d --build`, `compose ps`, `/api/health`).
+  - Runtime smoke: KXO cover via `/api/cover-proxy` now returns `200 image/png`.
+### 07. Docs Garble Repair + Commit Prep
+- Started `T-049` to fix markdown garbled text and prepare a clean repository commit.
+- Rebuilt session context from required memory files before edits.
+- Repaired broken `WORKLOG.md` section entries that had placeholder `?` corruption.
+- Restored accidentally re-encoded docs and verified markdown files are valid UTF-8.
+- Repaired `STATE.md` sample text entries for non-standard latest-chapter examples.
+- Confirmed markdown scan has no remaining control-character mojibake or triple-question corruption patterns.

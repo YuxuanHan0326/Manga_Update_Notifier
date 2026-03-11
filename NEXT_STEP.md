@@ -1,30 +1,26 @@
 ﻿# Next Step
 
 ## Current Task
-Verify and close the security-workflow repair round in GitHub Actions, then continue pending runtime-verification blocker cleanup.
+Complete current repository commit and hand over for user verification.
 
 ## Progress So Far
-- Completed implementation:
-  - `.github/workflows/security.yml` split into `python-audit` / `frontend-audit` / `trivy-image`.
-  - Trivy execution switched to official container scan path.
-  - `platform/backend/requirements.txt` bumped `fastapi` baseline to resolve vulnerable Starlette lineage.
-  - `README.md` security-check section updated.
-- Local backend validation passed (`ruff`, `pytest 24 passed`).
+- Session context rebuilt from memory files.
+- Markdown corruption cleanup completed:
+  - Repaired broken `WORKLOG.md` section entries with `?` placeholders.
+  - Repaired corrupted example text in `STATE.md`.
+  - Verified active markdown docs are valid UTF-8 and no mojibake control characters remain.
+- Task `T-049` moved to DONE.
 
 ## Current Blockers
-- Local Docker daemon still unavailable (`//./pipe/dockerDesktopLinuxEngine` not found), so mandatory local compose/health verification remains blocked.
+- No active blocker.
 
 ## Next Concrete Edits
-1. Push current branch and trigger `security.yml` run.
-2. Confirm three jobs statuses:
-   - `python-audit` should no longer fail at Starlette CVEs.
-   - `frontend-audit` runs independently and reports its own result.
-   - `trivy-image` should reach actual scan stage (no setup-trivy install failure).
-3. After Docker daemon恢复, close `T-035`/`T-036` via compose+health verification.
+1. Run final git diff sanity check and create one consolidated commit.
+2. Provide commit hash and changed-file summary to user.
+3. Wait for user acceptance, then continue pending functional backlog.
 
 ## Constraints Not To Forget
-- Must rebuild session context from memory files before coding.
-- Implementation must map to `REQUIREMENTS.md`; no unauthorized scope expansion.
-- Keep architecture extensible for heterogeneous future sources.
-- Docker-first NAS deployment remains baseline.
-- Security baseline: reverse-proxy auth preferred; app does not implement heavy auth in Phase 1.
+- Minimal-change principle; no unrelated feature changes.
+- Map changes to maintainability/documentation requirements (`NFR-002`).
+- Keep `README.md` and `.gitignore` reviewed in this round.
+- Docs-only cleanup: Docker rebuild can be skipped by protocol exception.

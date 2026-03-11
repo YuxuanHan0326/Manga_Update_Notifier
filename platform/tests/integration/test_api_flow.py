@@ -1,12 +1,7 @@
 from __future__ import annotations
 
 from app import api as api_module
-from app.adapters.base import (
-    AdapterSearchResult,
-    AdapterUpdate,
-    AdapterUpstreamError,
-    SearchPage,
-)
+from app.adapters.base import AdapterSearchResult, AdapterUpdate, AdapterUpstreamError, SearchPage
 from app.adapters.registry import register_adapter
 from app.main import app
 from fastapi.testclient import TestClient
@@ -48,6 +43,41 @@ class BrokenSearchAdapter:
 
     def list_updates(self, item_id: str, item_meta: dict | None = None):
         return []
+
+    def healthcheck(self) -> bool:
+        return True
+
+
+class FakeKxoAdapter:
+    code = "kxo"
+    name = "KXO"
+
+    @staticmethod
+    def parse_item_id(raw_ref: str) -> str | None:
+        return "20001" if "20001" in raw_ref else None
+
+    def configure_runtime(self, cfg: dict) -> None:
+        _ = cfg
+
+    def fetch_item_snapshot(self, item_id: str) -> dict:
+        return {
+            "item_title": "KXO Demo",
+            "cover": "https://img/cover.jpg",
+            "latest_update_time": "2026-03-10",
+            "latest_chapters": ["第2卷"],
+        }
+
+    def search(self, query: str, page: int):
+        # Search should never be called for KXO in manual-only mode.
+        _ = (query, page)
+        raise AdapterUpstreamError("kxo search should be disabled")
+
+    def list_updates(self, item_id: str, item_meta: dict | None = None):
+        _ = item_meta
+        return [
+            AdapterUpdate(update_id="kxo:1", title="第1卷", url="https://kzo.moe/c/20001.htm"),
+            AdapterUpdate(update_id="kxo:2", title="第2卷", url="https://kzo.moe/c/20001.htm"),
+        ]
 
     def healthcheck(self) -> bool:
         return True
@@ -140,7 +170,6 @@ def test_debug_notify_test_reports_channel_status():
     assert create.status_code == 200
     sub_id = create.json()["id"]
 
-    # Keep webhook disabled to avoid external network dependency in test.
     saved = client.put(
         "/api/settings",
         json={
@@ -178,7 +207,34 @@ def test_timezones_endpoint_returns_timezone_list():
     assert "UTC" in body
 
 
-def test_subscription_create_prefills_last_seen_from_search_meta():
+def test_kxo_manual_subscription_endpoint_supports_url_ref():
+    register_adapter(FakeKxoAdapter())
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/subscriptions/manual-kxo",
+        json={"ref": "https://kzo.moe/c/20001.htm"},
+    )
+    assert created.status_code == 200
+    body = created.json()
+    assert body["source_code"] == "kxo"
+    assert body["item_id"] == "20001"
+    assert body["item_title"] == "KXO Demo"
+    assert body["item_meta"]["cover"] == "https://img/cover.jpg"
+    assert body["last_seen_update_title"] == "第2卷"
+    assert body["last_seen_update_at"] == "2026-03-10"
+
+
+def test_kxo_search_endpoint_is_manual_only():
+    register_adapter(FakeKxoAdapter())
+    client = TestClient(app)
+
+    out = client.get("/api/search", params={"source": "kxo", "q": "jojo", "page": 1})
+    assert out.status_code == 400
+    assert "manual subscription only" in out.json()["detail"]
+
+
+def test_subscription_create_prefills_last_seen_from_search_meta_and_cover():
     client = TestClient(app)
     payload = {
         "source_code": "copymanga",
@@ -187,6 +243,7 @@ def test_subscription_create_prefills_last_seen_from_search_meta():
         "group_word": "default",
         "item_meta": {
             "group_word": "default",
+            "cover": "https://img/demo.jpg",
             "latest_update_time": "2026-03-01",
             "latest_chapters": ["第12话"],
         },
@@ -194,5 +251,101 @@ def test_subscription_create_prefills_last_seen_from_search_meta():
     out = client.post("/api/subscriptions", json=payload)
     assert out.status_code == 200
     body = out.json()
+    assert body["item_meta"]["cover"] == "https://img/demo.jpg"
     assert body["last_seen_update_title"] == "第12话"
     assert body["last_seen_update_at"] == "2026-03-01"
+
+
+def test_get_subscriptions_backfills_missing_cover_from_adapter_snapshot():
+    register_adapter(FakeKxoAdapter())
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/subscriptions",
+        json={
+            "source_code": "kxo",
+            "item_id": "20001",
+            "item_title": "KXO No Cover",
+            "group_word": "default",
+            "item_meta": {"group_word": "default"},
+        },
+    )
+    assert created.status_code == 200
+    assert created.json()["item_meta"].get("cover", "") == ""
+
+    listed = client.get("/api/subscriptions")
+    assert listed.status_code == 200
+    top = listed.json()[0]
+    assert top["source_code"] == "kxo"
+    assert top["item_meta"]["cover"] == "https://img/cover.jpg"
+
+
+def test_cover_proxy_allows_known_host_and_returns_image(monkeypatch):
+    class _FakeImageResponse:
+        status_code = 200
+        headers = {"content-type": "image/jpeg"}
+        content = b"demo-bytes"
+
+        def raise_for_status(self) -> None:
+            return None
+
+    def _fake_get(url: str, headers: dict, timeout: int, follow_redirects: bool):
+        assert url.startswith("https://sj.mangafunb.fun/")
+        assert timeout == 15
+        assert follow_redirects is True
+        return _FakeImageResponse()
+
+    monkeypatch.setattr(api_module.httpx, "get", _fake_get)
+    client = TestClient(app)
+
+    out = client.get(
+        "/api/cover-proxy",
+        params={"url": "https://sj.mangafunb.fun/j/demo/cover/a.jpg"},
+    )
+    assert out.status_code == 200
+    assert out.headers["content-type"].startswith("image/")
+    assert out.content == b"demo-bytes"
+
+
+def test_cover_proxy_mxomo_uses_referer_fallback(monkeypatch):
+    class _Resp:
+        def __init__(self, status_code: int) -> None:
+            self.status_code = status_code
+            self.headers = {"content-type": "image/png" if status_code == 200 else "text/plain"}
+            self.content = b"img" if status_code == 200 else b"blocked"
+
+    calls: list[str | None] = []
+
+    def _fake_get(url: str, headers: dict, timeout: int, follow_redirects: bool):
+        _ = (url, timeout, follow_redirects)
+        referer = headers.get("Referer")
+        calls.append(referer)
+        if referer is None:
+            return _Resp(200)
+        return _Resp(403)
+
+    monkeypatch.setattr(api_module.httpx, "get", _fake_get)
+    client = TestClient(app)
+
+    out = client.get(
+        "/api/cover-proxy",
+        params={
+            "url": (
+                "https://kmimg.mxomo.com/cover/sigl/demo.jpg"
+                "!cover_l?sign=test"
+            )
+        },
+    )
+    assert out.status_code == 200
+    assert out.content == b"img"
+    assert calls[0] is None
+
+
+def test_cover_proxy_rejects_unknown_host():
+    client = TestClient(app)
+    out = client.get(
+        "/api/cover-proxy",
+        params={"url": "https://example.org/cover.jpg"},
+    )
+    assert out.status_code == 400
+    assert "not allowed" in out.json()["detail"]

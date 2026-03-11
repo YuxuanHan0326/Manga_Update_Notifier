@@ -1,8 +1,8 @@
 # Requirements
 
 ## Document Status
-- Version: v0.2
-- Last Updated: 2026-03-09
+- Version: v0.4
+- Last Updated: 2026-03-11
 - Source: user-confirmed requirements from kickoff discussion
 
 ## Functional Requirements
@@ -13,11 +13,13 @@ Acceptance:
 - New source can be added by implementing a defined adapter interface.
 - Core scheduler and notification logic do not require source-specific edits.
 
-### FR-002 CopyManga Source (Phase 1)
-System must support CopyManga as the first adapter.
+### FR-002 Initial Source Set (Phase 1)
+System must support CopyManga and KXO as active adapters in current release.
 Acceptance:
 - Can search content from CopyManga.
 - Can query chapters/updates for subscribed items.
+- Can query chapters/updates for KXO subscribed items in guest mode.
+- KXO is operated as manual-subscription-only source in current scope.
 
 ### FR-003 Subscription Management
 System must allow managing tracked items in Web UI.
@@ -27,7 +29,9 @@ Acceptance:
 - Provide temporary per-subscription debug actions for notification test and update simulation.
 - Debug simulation must not affect normal automatic daily-summary notification behavior.
 - Subscription list should display Last Seen time and Last Seen latest-chapter title.
+- Subscription list should display cover image when available in stored metadata.
 - New subscription should prefill Last Seen fields from available search metadata when possible.
+- Must support manual KXO subscription creation by URL/ID (without requiring account/password login).
 
 ### FR-004 Search and One-Click Subscribe
 System must provide in-app search and one-click add to tracking.
@@ -37,6 +41,7 @@ Acceptance:
 - Search results should display cover image and basic metadata.
 - Search results should display latest update time and latest chapter info when metadata can be obtained.
 - Clicking an item creates a valid subscription record automatically.
+- For KXO source, search endpoint should return readable manual-only guidance instead of internal errors.
 
 ### FR-005 Scheduled Update Check
 System must run update checks on configurable schedule.
@@ -45,6 +50,7 @@ Acceptance:
 - Timezone should support auto-detection by client IP (with fallback if lookup fails).
 - Timezone should support manual selection from a timezone list in UI.
 - Check jobs execute automatically with logs and status.
+- Source settings should support KXO runtime connectivity configuration (`base_url`, `user_agent`) for manual-subscription mode.
 
 ### FR-006 Daily Summary Notification
 System must send one daily summary at a configured time.
@@ -87,6 +93,8 @@ Acceptance:
 ### NFR-005 Security (Baseline)
 - Config secrets stored outside source code.
 - Deployment guidance must include reverse-proxy/auth recommendation.
+- System must not store source account/password credentials.
+- KXO credential login flow is out of current scope; manual-subscription path should not require stored credentials.
 
 ## Business Rules
 - BR-001 Update detection is based on adapter-defined unique update ID.
@@ -95,6 +103,9 @@ Acceptance:
 - BR-004 Adapter failures for one source must not block other sources.
 - BR-005 Debug/simulated updates are excluded from daily-summary auto push window.
 - BR-006 Summary candidate window is based on unsummarized real events (not strict calendar-day cutoff) to avoid missed notifications after downtime.
+- BR-007 KXO update detection in guest mode is allowed through manual URL/ID subscription path.
+- BR-008 KXO search capability is disabled in current scope; manual URL/ID subscription is the only supported entry path.
+- BR-009 KXO subscription metadata should preserve `cover` when available for subscription-list rendering.
 
 ## Out of Scope (Current)
 - Content downloading/export workflow

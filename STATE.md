@@ -1,7 +1,7 @@
 # State
 
 ## Snapshot
-- Date: 2026-03-09
+- Date: 2026-03-11
 - Phase: Phase 1 MVP Implemented
 - Overall Status: IN_PROGRESS
 
@@ -9,6 +9,28 @@
 Stabilize and harden the shipped Phase 1 implementation for production use on NAS.
 
 ## What Is Done In This Iteration
+- Completed markdown garble cleanup round:
+  - Repaired broken `WORKLOG.md` lines that had `?` placeholder corruption.
+  - Normalized/validated markdown encoding as UTF-8 across active docs.
+  - Repaired example text corruption in `STATE.md` for non-standard latest-chapter samples.
+  - No program-body changes in this round; docs/ledger cleanup only.
+- Completed KXO cover-debug round:
+  - Confirmed KXO adapter cover extraction is available in subscription metadata.
+  - Identified runtime root cause: `kmimg.mxomo.com` returned `403` under previous cover-proxy referer.
+  - Updated cover proxy referer fallback strategy for `mxomo` hosts and verified runtime `200 image/*`.
+  - Added integration regression coverage and completed Docker runtime verification.
+- Completed cover-render + schedule-toggle bugfix round:
+  - Added constrained cover proxy API (`/api/cover-proxy`) for known source/cdn hosts.
+  - Frontend cover rendering now uses proxied URLs with fallback placeholder when image load fails.
+  - Schedule toggle checkboxes are now right-aligned next to option labels with tighter spacing.
+  - Added integration tests for cover proxy allow/reject behavior.
+  - Validation passed (backend/frontend checks + Docker runtime health).
+- Completed subscription-cover regression bugfix round:
+  - Expanded CopyManga/KXO cover extraction fallback paths (meta/json/img selectors).
+  - Added backend on-read cover backfill for historical subscriptions missing `item_meta.cover`.
+  - Added regression tests (unit + integration) and passed backend validation.
+  - Frontend validation passed; `npm test/build` required elevated execution due sandbox `spawn EPERM`.
+  - Docker runtime verification passed (`docker compose up -d --build`, `docker compose ps`, `/api/health`).
 - Delivered greenfield implementation under `platform/`:
   - Backend (FastAPI + scheduler + adapters + services + models)
   - Frontend (Vite UI for search/subscriptions/settings/events)
@@ -96,11 +118,49 @@ Stabilize and harden the shipped Phase 1 implementation for production use on NA
   - Added security workflow description in `README.md`.
   - Local backend validation passed (`ruff`, `pytest 24 passed`).
   - Docker runtime verification attempted but still blocked by local daemon pipe unavailability.
+- Completed schedule UX improvement round:
+  - Added friendly schedule controls in settings UI:
+    - check every N hours
+    - daily summary time (`HH:MM`)
+  - Kept advanced cron fields for compatibility with non-standard schedules.
+  - Added frontend cron helper functions and unit tests.
+  - Validation passed (`ruff`, `pytest 24 passed`, frontend lint/test/build).
+  - Docker runtime verification now succeeds (`compose up -d --build`, `compose ps`, `/api/health`).
+- Active worklog rotated again after exceeding threshold; archive created at `worklog_archive/WORKLOG_ARCHIVE_20260311_024526.md`.
+- Completed KXO dual-path v1 integration round:
+  - Added `kxo` adapter with host fallback (`kzo.moe -> kxo.moe`), guest update detection, and cookie-auth search.
+  - Added manual KXO subscription endpoint (`/api/subscriptions/manual-kxo`) supporting URL/ID parsing.
+  - Added KXO settings model and runtime handling (`base_url`, `auth_mode`, `cookie`, `remember_session`, `user_agent`), including default non-persistent cookie path.
+  - Added KXO settings test endpoint (`/api/settings/kxo/test`) and explicit auth-safe search errors (`auth_required` / `session_invalid`).
+  - Updated frontend with KXO source selector, KXO settings block, test button, and manual add controls.
+  - Validation passed: backend (`ruff`, `pytest 31 passed`) and frontend (`npm run lint/test/build`).
+  - Docker runtime verification passed (`docker compose up -d --build`, `docker compose ps`, `/api/health`).
+- Completed approved requirements/brief alignment round (docs-only):
+  - Updated `PROJECT_BRIEF.md` to reflect current source scope (CopyManga + KXO dual-path).
+  - Updated `REQUIREMENTS.md` with KXO path requirements, auth error semantics, and cookie persistence policy.
+  - Reviewed `README.md` and `.gitignore`; no further content changes required for this round.
+  - Docker verification skipped by protocol exception (no program-body changes).
+- Completed frontend information-architecture split round:
+  - Reorganized mixed single-page UI into three tabs (`General`, `CopyManga`, `KXO`) for better manageability.
+  - Separated source search flows into dedicated pages while keeping one-click subscription behavior unchanged.
+  - Moved KXO manual add and KXO-specific settings to KXO tab; kept general schedule/notification controls in General tab.
+  - Synced docs (`README.md`, `ARCHITECTURE.md`) and revalidated runtime (`npm lint/test/build` + Docker up/health).
+- Completed schedule tick + KXO credential-login bugfix round:
+  - Fixed settings action-row checkbox/tick misalignment via checkbox-specific CSS and toggle label layout.
+  - Added one-shot KXO credential login endpoint (`POST /api/settings/kxo/login`) and KXO frontend login entry.
+  - Kept password non-persistent by design; cookie persistence still follows remember-session policy.
+  - Added integration regression coverage and passed validation (`ruff`, `pytest 32 passed`, frontend lint/test/build, Docker health check).
+- Completed KXO scope-rollback + subscription-cover round:
+  - Applied requirement change: KXO now manual-subscription-only in current phase.
+  - Removed KXO credential-login endpoint and KXO search/login UI controls.
+  - Enforced readable manual-only response for `/api/search?source=kxo`.
+  - Added cover rendering to subscription list and persisted `item_meta.cover` in new CopyManga/KXO subscription paths.
+  - Synced docs and requirements/brief after approved scope change; full validation and Docker runtime checks passed.
 
 ## Next Step
-1. Start Docker daemon and rerun mandatory runtime verification (`compose up -d --build`, `compose ps`, `/api/health`) to close this round.
-2. Apply branch protection/ruleset in GitHub UI using `docs/branch-protection.md` and verify required checks are enforced.
-3. Continue adapter observability hardening (structured warning fields for source/status/content-type) without API contract changes.
+1. Collect user acceptance feedback on manual-only KXO flow and subscription cover rendering.
+2. Run NAS-side real-site smoke checks for KXO manual URL/ID subscription + update-detection path.
+3. Apply branch protection/ruleset in GitHub UI using `docs/branch-protection.md` and verify required checks are enforced.
 
 ## Active Risks
 - R-001: Source anti-bot/rate-limit behavior may still impact long-term stability.
@@ -109,7 +169,7 @@ Stabilize and harden the shipped Phase 1 implementation for production use on NA
 - R-004: Webpage metadata availability is non-uniform; some comics may still expose partial fields.
 - R-005: Metadata cache is in-process TTL and not persisted across restarts (intentional for Phase 1 simplicity).
 - R-006: CopyManga page schema may continue evolving; parser is broader now but still depends on detectable JSON/HTML hints.
-- R-007: Local Docker daemon availability can temporarily block mandatory runtime verification despite code/test success.
+- R-007: Security scanners may continue surfacing upstream dependency CVEs requiring periodic pin updates.
 
 ## Assumptions In Effect
 - Single-instance NAS deployment for Phase 1.

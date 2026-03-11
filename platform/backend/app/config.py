@@ -22,6 +22,14 @@ class AppSettings(BaseSettings):
     rss_enabled: bool = True
     app_base_url: str = "http://localhost:8000"
     cm_api_base_url: str = "https://api.mangacopy.com"
+    kxo_base_url: str = "https://kzo.moe"
+    kxo_auth_mode: str = "guest"
+    kxo_cookie: str = ""
+    kxo_user_agent: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+    )
+    kxo_remember_session: bool = False
     static_dir: str = ""
     scheduler_enabled: bool = True
 

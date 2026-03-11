@@ -3,11 +3,23 @@
 这是一个面向 NAS 的自托管项目。当前主实现位于 `platform/`，目标是提供“多源可扩展的更新检测 + 每日汇总通知 + Web 管理界面”。
 
 ## 当前能力（Phase 1）
-- 首站支持：`CopyManga`
+- 已支持源：`CopyManga`、`KXO(kzo/kxo)`
 - 已实现：搜索、订阅、定时检查、每日汇总、Webhook 通知、RSS 输出
 - 搜索结果支持：封面、分页、最后更新时间、最新话
+- Web UI 已按管理场景拆分为三个页签：`General`、`CopyManga`、`KXO`
+  - `General`：订阅列表、调度/通用通知配置、事件列表
+  - `CopyManga`：CopyManga 搜索与一键订阅
+  - `KXO`：KXO manual URL/ID 订阅、KXO 专属配置
+- KXO 当前策略：仅支持 `manual subscription`
+  - 支持手动 URL/ID 添加订阅 + 更新检测
+  - 不提供站内搜索
+  - 不提供账号密码登录入口
 - 设置支持：`Timezone Auto (by IP)` 自动时区（失败时回退默认时区）+ 手动时区下拉选择
+- 排程设置支持：友好模式（每几小时检查、每日推送时间）+ Advanced Cron 兼容模式
 - 订阅列表支持：显示上次获取时间与上次最新话标题（Last Seen）
+- 订阅列表支持：对历史“无封面”订阅进行读取时自动回填（若源站可提取到封面）
+- 订阅封面加载策略：优先通过应用内封面代理加载，降低外链防盗链/跨域策略导致的渲染失败
+  - KXO 封面 CDN（`mxomo`）已增加兼容请求策略，避免代理链路下的 403 拒绝
 - 新增订阅支持：从搜索元信息预填充 Last Seen（无需等待首次检查）
 - 订阅调试支持：
   - `Test Notify`：强制触发一次通知测试
@@ -60,6 +72,14 @@ curl -X POST http://localhost:8000/api/jobs/run-daily-summary
 curl "http://localhost:8000/api/search?source=copymanga&q=one&page=1"
 ```
 
+KXO 手动添加订阅（URL/ID）示例：
+
+```powershell
+curl -X POST http://localhost:8000/api/subscriptions/manual-kxo `
+  -H "Content-Type: application/json" `
+  -d "{\"ref\":\"https://kzo.moe/c/20001.htm\"}"
+```
+
 ## 关键目录
 - `platform/backend/`：后端 API、调度器、适配器、通知模块
 - `platform/frontend/`：前端 Web UI
@@ -93,6 +113,14 @@ curl "http://localhost:8000/api/search?source=copymanga&q=one&page=1"
 - `MUP_DAILY_SUMMARY_CRON`：日报任务 cron
 - `MUP_WEBHOOK_URL`：Webhook 地址
 - `MUP_CM_API_BASE_URL`：CopyManga API 基地址
+- `MUP_KXO_BASE_URL`：KXO 基地址（默认 `https://kzo.moe`）
+- `MUP_KXO_AUTH_MODE`：KXO 认证模式（当前建议固定 `guest`）
+- `MUP_KXO_COOKIE`：历史兼容字段（manual-only 模式下不需要）
+- `MUP_KXO_USER_AGENT`：KXO 请求 UA
+- `MUP_KXO_REMEMBER_SESSION`：历史兼容字段（manual-only 模式下不需要）
+
+说明：
+- KXO 已收敛为 manual-only 路径，站内搜索与凭证登录链路已移除。
 
 可参考模板：`platform/.env.example`
 
