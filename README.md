@@ -6,10 +6,12 @@
 - 已支持源：`CopyManga`、`KXO(kzo/kxo)`
 - 已实现：搜索、订阅、定时检查、每日汇总、Webhook 通知、RSS 输出
 - 搜索结果支持：封面、分页、最后更新时间、最新话
+- CopyManga 搜索结果点击“订阅”后会弹出成功提示，便于确认操作已完成
 - Web UI 已按管理场景拆分为三个页签：`General`、`CopyManga`、`KXO`
   - `General`：订阅列表、调度/通用通知配置、事件列表
   - `CopyManga`：CopyManga 搜索与一键订阅
   - `KXO`：KXO manual URL/ID 订阅、KXO 专属配置
+- 页面文案已完成中文化（保留 CopyManga、KXO、RSS、Webhook、Cron 等必要专有名词）。
 - KXO 当前策略：仅支持 `manual subscription`
   - 支持手动 URL/ID 添加订阅 + 更新检测
   - 不提供站内搜索
@@ -25,11 +27,36 @@
   - `Test Notify`：强制触发一次通知测试
   - `Sim Update`：模拟抓到更新（仅调试，不参与当日自动汇总推送）
 - 日报策略：基于“未汇总的真实更新”发送，支持停机跨天恢复后补发，避免漏推送
+- 订阅生命周期策略：
+  - 取消订阅默认会删除该订阅下“未汇总事件”，避免后续继续触发汇总
+  - 如需彻底清理历史，可在删除接口使用 `purge_history=true` 一并删除已汇总事件
+  - RSS 与自动日报仅处理“当前仍为 active 的订阅”事件，不展示/汇总已暂停或已取消订阅的残留事件
+- Events 列表默认仅展示“active 订阅 + 非 debug”事件，避免历史残留和调试噪声干扰
 
 ## 通知渠道
 当前支持的通知渠道：
 - `Webhook`（主动推送）
 - `RSS`（拉取订阅）
+
+### Webhook 结构（v2，已替换旧版）
+- 当前 webhook payload 为统一 v2 结构（旧版已移除）：
+  - 顶层：`schema_version`、`event_type`、`generated_at`、`timezone`、`title`、`window_start`、`window_end`、`count`、`summary`、`events`
+  - `events[*]`：
+    - `subscription`：`item_id`、`item_title`、`cover`、`source_item_url`
+    - `update`：`update_id`、`update_title`、`update_url`、`detected_at`、`detected_at_local`、`dedupe_key`
+- 适用场景：
+  - n8n / 自建下游可直接按 `subscription.item_title`、`update.update_title` 等字段做模板化邮件/消息拼接，无需再查库。
+
+### RSS 输出（阅读器友好）
+- `RSS` 已改为“可直接阅读”的文本描述（旧版简陋描述已移除）：
+  - `item.title`：`作品名 · 最新话`
+  - `item.description`：短摘要（来源、时间、章节链接），保证列表视图不拥挤
+  - `content:encoded`：详细文本（作品、最新更新、来源、时间、章节链接、作品页）
+- 当前策略：RSS 不输出封面媒体字段（`media:thumbnail`/`enclosure`），只保留文本信息，提升阅读器兼容性
+- 用户在 RSS 阅读器中可直接阅读关键信息，不需要解析内部 JSON 字段。
+- CopyManga 链接安全修复：
+  - RSS/Webhook 中的 CopyManga 作品/章节链接统一规范到官方域名 `https://www.mangacopy.com`
+  - 历史遗留的 `copymanga.site` 链接会在输出时自动改写，避免下游读取到错误站点
 
 ## 快速启动（Docker）
 在仓库根目录执行：
@@ -66,6 +93,30 @@ curl -X POST http://localhost:8000/api/jobs/run-check
 curl -X POST http://localhost:8000/api/jobs/run-daily-summary
 ```
 
+删除订阅（默认仅清理未汇总事件）：
+
+```powershell
+curl -X DELETE "http://localhost:8000/api/subscriptions/<SUB_ID>"
+```
+
+删除订阅并彻底清理历史事件：
+
+```powershell
+curl -X DELETE "http://localhost:8000/api/subscriptions/<SUB_ID>?purge_history=true"
+```
+
+查看 Events（默认过滤 debug 与非 active）：
+
+```powershell
+curl "http://localhost:8000/api/events?status=all"
+```
+
+查看包含调试与非 active 的 Events（排障模式）：
+
+```powershell
+curl "http://localhost:8000/api/events?status=all&include_debug=true&include_inactive=true"
+```
+
 搜索接口示例：
 
 ```powershell
@@ -79,6 +130,12 @@ curl -X POST http://localhost:8000/api/subscriptions/manual-kxo `
   -H "Content-Type: application/json" `
   -d "{\"ref\":\"https://kzo.moe/c/20001.htm\"}"
 ```
+
+## 常见问题排查
+- 页面中文显示乱码：
+  - 先执行浏览器硬刷新（`Ctrl + F5`）清理旧前端缓存。
+  - 确认容器已重建到最新前端资源：`cd platform && docker compose up -d --build`。
+  - 若仍异常，请打开浏览器开发者工具，确认 `index-*.js` 为最新构建版本并反馈具体乱码文本位置。
 
 ## 关键目录
 - `platform/backend/`：后端 API、调度器、适配器、通知模块

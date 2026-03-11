@@ -48,6 +48,40 @@ class BrokenSearchAdapter:
         return True
 
 
+class RollingUpdateAdapter:
+    code = "rolling-source"
+    name = "Rolling Source"
+
+    def __init__(self) -> None:
+        self._calls = 0
+
+    def search(self, query: str, page: int):
+        return SearchPage(
+            page=page,
+            total=1,
+            items=[
+                AdapterSearchResult(
+                    item_id="rolling-item",
+                    title=f"{query}-rolling",
+                    group_word="default",
+                )
+            ],
+        )
+
+    def list_updates(self, item_id: str, item_meta: dict | None = None):
+        _ = (item_id, item_meta)
+        self._calls += 1
+        if self._calls == 1:
+            return [AdapterUpdate(update_id="u1", title="chapter-1", url="http://example/u1")]
+        return [
+            AdapterUpdate(update_id="u1", title="chapter-1", url="http://example/u1"),
+            AdapterUpdate(update_id="u2", title="chapter-2", url="http://example/u2"),
+        ]
+
+    def healthcheck(self) -> bool:
+        return True
+
+
 class FakeKxoAdapter:
     code = "kxo"
     name = "KXO"
@@ -64,7 +98,7 @@ class FakeKxoAdapter:
             "item_title": "KXO Demo",
             "cover": "https://img/cover.jpg",
             "latest_update_time": "2026-03-10",
-            "latest_chapters": ["第2卷"],
+            "latest_chapters": ["ÃƒÂ§Ã‚Â¬Ã‚Â¬2ÃƒÂ¥Ã‚ÂÃ‚Â·"],
         }
 
     def search(self, query: str, page: int):
@@ -75,8 +109,8 @@ class FakeKxoAdapter:
     def list_updates(self, item_id: str, item_meta: dict | None = None):
         _ = item_meta
         return [
-            AdapterUpdate(update_id="kxo:1", title="第1卷", url="https://kzo.moe/c/20001.htm"),
-            AdapterUpdate(update_id="kxo:2", title="第2卷", url="https://kzo.moe/c/20001.htm"),
+            AdapterUpdate(update_id="kxo:1", title="ÃƒÂ§Ã‚Â¬Ã‚Â¬1ÃƒÂ¥Ã‚ÂÃ‚Â·", url="https://kzo.moe/c/20001.htm"),
+            AdapterUpdate(update_id="kxo:2", title="ÃƒÂ§Ã‚Â¬Ã‚Â¬2ÃƒÂ¥Ã‚ÂÃ‚Â·", url="https://kzo.moe/c/20001.htm"),
         ]
 
     def healthcheck(self) -> bool:
@@ -221,7 +255,7 @@ def test_kxo_manual_subscription_endpoint_supports_url_ref():
     assert body["item_id"] == "20001"
     assert body["item_title"] == "KXO Demo"
     assert body["item_meta"]["cover"] == "https://img/cover.jpg"
-    assert body["last_seen_update_title"] == "第2卷"
+    assert body["last_seen_update_title"] == "ÃƒÂ§Ã‚Â¬Ã‚Â¬2ÃƒÂ¥Ã‚ÂÃ‚Â·"
     assert body["last_seen_update_at"] == "2026-03-10"
 
 
@@ -245,14 +279,14 @@ def test_subscription_create_prefills_last_seen_from_search_meta_and_cover():
             "group_word": "default",
             "cover": "https://img/demo.jpg",
             "latest_update_time": "2026-03-01",
-            "latest_chapters": ["第12话"],
+            "latest_chapters": ["ÃƒÂ§Ã‚Â¬Ã‚Â¬12ÃƒÂ¨Ã‚Â¯Ã‚Â"],
         },
     }
     out = client.post("/api/subscriptions", json=payload)
     assert out.status_code == 200
     body = out.json()
     assert body["item_meta"]["cover"] == "https://img/demo.jpg"
-    assert body["last_seen_update_title"] == "第12话"
+    assert body["last_seen_update_title"] == "ÃƒÂ§Ã‚Â¬Ã‚Â¬12ÃƒÂ¨Ã‚Â¯Ã‚Â"
     assert body["last_seen_update_at"] == "2026-03-01"
 
 
@@ -349,3 +383,231 @@ def test_cover_proxy_rejects_unknown_host():
     )
     assert out.status_code == 400
     assert "not allowed" in out.json()["detail"]
+
+
+def test_rss_output_is_reader_friendly_text():
+    register_adapter(FakeAdapter())
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/subscriptions",
+        json={
+            "source_code": "testsource",
+            "item_id": "comic-1",
+            "item_title": "hello-result",
+            "group_word": "default",
+            "item_meta": {"group_word": "default", "cover": "https://img/cover.jpg"},
+        },
+    )
+    assert created.status_code == 200
+    sub_id = created.json()["id"]
+
+    simulated = client.post(f"/api/subscriptions/{sub_id}/debug/simulate-update")
+    assert simulated.status_code == 200
+
+    rss = client.get("/api/notifications/rss.xml")
+    assert rss.status_code == 200
+    xml = rss.text
+    assert "hello-result" in xml
+    assert "hello-result \u00b7" in xml
+    assert "\u6765\u6e90:" in xml
+    assert "\u6253\u5f00\u7ae0\u8282:" in xml
+    assert "<content:encoded>" in xml
+    assert "<media:thumbnail" not in xml
+    assert "<enclosure" not in xml
+
+
+def test_rss_copymanga_links_use_official_domain():
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/subscriptions",
+        json={
+            "source_code": "copymanga",
+            "item_id": "haizeiwang",
+            "item_title": "海贼王",
+            "group_word": "default",
+            "item_meta": {"group_word": "default"},
+        },
+    )
+    assert created.status_code == 200
+    sub_id = created.json()["id"]
+
+    simulated = client.post(f"/api/subscriptions/{sub_id}/debug/simulate-update")
+    assert simulated.status_code == 200
+
+    rss = client.get("/api/notifications/rss.xml")
+    assert rss.status_code == 200
+    xml = rss.text
+    assert "https://www.mangacopy.com/comic/haizeiwang" in xml
+    assert "copymanga.site" not in xml
+
+
+def test_unsubscribe_default_removes_pending_events_only():
+    register_adapter(FakeAdapter())
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/subscriptions",
+        json={
+            "source_code": "testsource",
+            "item_id": "comic-1",
+            "item_title": "pending-demo",
+            "group_word": "default",
+            "item_meta": {"group_word": "default"},
+        },
+    )
+    assert created.status_code == 200
+    sub_id = created.json()["id"]
+
+    simulated = client.post(f"/api/subscriptions/{sub_id}/debug/simulate-update")
+    assert simulated.status_code == 200
+
+    before = client.get("/api/events", params={"status": "new", "include_debug": "true"})
+    assert before.status_code == 200
+    assert any(evt["subscription_id"] == sub_id for evt in before.json())
+
+    deleted = client.delete(f"/api/subscriptions/{sub_id}")
+    assert deleted.status_code == 200
+    assert "removed_events=1" in deleted.json()["detail"]
+    assert "purge_history=false" in deleted.json()["detail"]
+
+    after = client.get("/api/events", params={"status": "new", "include_debug": "true"})
+    assert after.status_code == 200
+    assert all(evt["subscription_id"] != sub_id for evt in after.json())
+
+
+def test_unsubscribe_with_purge_history_removes_summarized_events():
+    register_adapter(RollingUpdateAdapter())
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/subscriptions",
+        json={
+            "source_code": "rolling-source",
+            "item_id": "rolling-item",
+            "item_title": "rolling-demo",
+            "group_word": "default",
+            "item_meta": {"group_word": "default"},
+        },
+    )
+    assert created.status_code == 200
+    sub_id = created.json()["id"]
+
+    # First run seeds baseline, second run creates one real event.
+    assert client.post("/api/jobs/run-check").status_code == 200
+    second_run = client.post("/api/jobs/run-check")
+    assert second_run.status_code == 200
+    assert second_run.json()["discovered"] == 1
+
+    summary = client.post("/api/jobs/run-daily-summary")
+    assert summary.status_code == 200
+    assert summary.json()["status"] == "sent"
+    assert summary.json()["candidates"] == 1
+
+    summarized_before_delete = client.get("/api/events", params={"status": "summarized"})
+    assert summarized_before_delete.status_code == 200
+    assert any(evt["subscription_id"] == sub_id for evt in summarized_before_delete.json())
+
+    deleted = client.delete(f"/api/subscriptions/{sub_id}", params={"purge_history": "true"})
+    assert deleted.status_code == 200
+    assert "removed_events=1" in deleted.json()["detail"]
+    assert "purge_history=true" in deleted.json()["detail"]
+
+    summarized_after_delete = client.get("/api/events", params={"status": "summarized"})
+    assert summarized_after_delete.status_code == 200
+    assert all(evt["subscription_id"] != sub_id for evt in summarized_after_delete.json())
+
+
+def test_rss_excludes_events_for_non_active_subscriptions():
+    register_adapter(RollingUpdateAdapter())
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/subscriptions",
+        json={
+            "source_code": "rolling-source",
+            "item_id": "rolling-item",
+            "item_title": "rolling-rss-demo",
+            "group_word": "default",
+            "item_meta": {"group_word": "default"},
+        },
+    )
+    assert created.status_code == 200
+    sub_id = created.json()["id"]
+
+    # Create one real event tied to this subscription.
+    assert client.post("/api/jobs/run-check").status_code == 200
+    assert client.post("/api/jobs/run-check").status_code == 200
+
+    rss_active = client.get("/api/notifications/rss.xml")
+    assert rss_active.status_code == 200
+    assert "rolling-rss-demo" in rss_active.text
+
+    paused = client.put(f"/api/subscriptions/{sub_id}", json={"status": "paused"})
+    assert paused.status_code == 200
+
+    rss_paused = client.get("/api/notifications/rss.xml")
+    assert rss_paused.status_code == 200
+    assert "rolling-rss-demo" not in rss_paused.text
+
+
+def test_events_default_hides_debug_but_can_be_included():
+    register_adapter(FakeAdapter())
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/subscriptions",
+        json={
+            "source_code": "testsource",
+            "item_id": "comic-1",
+            "item_title": "debug-events-demo",
+            "group_word": "default",
+            "item_meta": {"group_word": "default"},
+        },
+    )
+    assert created.status_code == 200
+    sub_id = created.json()["id"]
+
+    simulated = client.post(f"/api/subscriptions/{sub_id}/debug/simulate-update")
+    assert simulated.status_code == 200
+
+    hidden = client.get("/api/events", params={"status": "all"})
+    assert hidden.status_code == 200
+    assert all(evt["subscription_id"] != sub_id for evt in hidden.json())
+
+    shown = client.get("/api/events", params={"status": "all", "include_debug": "true"})
+    assert shown.status_code == 200
+    assert any(evt["subscription_id"] == sub_id for evt in shown.json())
+
+
+def test_events_default_hides_inactive_but_can_be_included():
+    register_adapter(RollingUpdateAdapter())
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/subscriptions",
+        json={
+            "source_code": "rolling-source",
+            "item_id": "rolling-item",
+            "item_title": "inactive-events-demo",
+            "group_word": "default",
+            "item_meta": {"group_word": "default"},
+        },
+    )
+    assert created.status_code == 200
+    sub_id = created.json()["id"]
+
+    assert client.post("/api/jobs/run-check").status_code == 200
+    assert client.post("/api/jobs/run-check").status_code == 200
+
+    paused = client.put(f"/api/subscriptions/{sub_id}", json={"status": "paused"})
+    assert paused.status_code == 200
+
+    hidden = client.get("/api/events", params={"status": "all"})
+    assert hidden.status_code == 200
+    assert all(evt["subscription_id"] != sub_id for evt in hidden.json())
+
+    shown = client.get("/api/events", params={"status": "all", "include_inactive": "true"})
+    assert shown.status_code == 200
+    assert any(evt["subscription_id"] == sub_id for evt in shown.json())

@@ -5,7 +5,7 @@ import json
 from sqlalchemy.orm import Session
 
 from ..adapters.registry import get_adapter
-from ..models import Subscription
+from ..models import Subscription, UpdateEvent
 from ..schemas import SubscriptionCreate, SubscriptionUpdate
 from .settings import get_runtime_settings
 
@@ -132,10 +132,17 @@ def update_subscription(
     return row
 
 
-def delete_subscription(db: Session, sub_id: int) -> bool:
+def delete_subscription(db: Session, sub_id: int, purge_history: bool = False) -> tuple[bool, int]:
     row = db.query(Subscription).filter(Subscription.id == sub_id).one_or_none()
     if row is None:
-        return False
+        return False, 0
+
+    delete_query = db.query(UpdateEvent).filter(UpdateEvent.subscription_id == sub_id)
+    if not purge_history:
+        # Keep delivery history by default, but remove pending events that could still notify.
+        delete_query = delete_query.filter(UpdateEvent.summarized_at.is_(None))
+    removed_events = delete_query.delete(synchronize_session=False)
+
     db.delete(row)
     db.commit()
-    return True
+    return True, int(removed_events)

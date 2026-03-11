@@ -316,3 +316,74 @@
 - Impact:
   - Frontend cover display now uses proxied URLs with fallback placeholder on load error.
   - API surface gains a constrained media-proxy endpoint for UI only.
+
+## D-031 Notification Payload v2 and Reader-Friendly RSS (Breaking Update)
+- Date: 2026-03-11
+- Status: Accepted
+- Context: User requires direct n8n downstream templating and direct RSS-reader readability; legacy webhook/rss payloads were too sparse.
+- Decision:
+  - Replace legacy webhook payload with unified `schema_version=2.0` structure containing:
+    - top-level summary metadata (`event_type`, `generated_at`, `timezone`, counters)
+    - enriched event data with nested `subscription` and `update` blocks
+  - Replace legacy RSS item description with reader-friendly text fields (work title/update/source/time/link, optional cover URL).
+  - Drop old payload format without compatibility fallback in current branch.
+- Reason: Downstream automation and human reading should work without extra API joins or custom parsing glue.
+- Impact:
+  - Webhook consumers must migrate to v2 field paths.
+  - RSS items are now readable in standard readers out of the box.
+  - Summary and RSS paths now share enriched event projection logic to reduce drift.
+
+## D-032 RSS Presentation Refinement for Reader UX
+- Date: 2026-03-11
+- Status: Accepted
+- Context: Real-reader feedback showed dense multiline descriptions and long cover URLs still degrade list readability.
+- Decision:
+  - Keep `description` compact as one-line summary (source/time/chapter link).
+  - Move detailed text into `content:encoded`.
+  - Publish cover via `media:thumbnail` and `enclosure` instead of plain long URL text in description.
+  - Add RSS metadata compatibility fields (`atom:link` self reference, `category`, `guid isPermaLink=false`).
+- Reason: Improve readability across common readers while preserving full information access in expanded view.
+- Impact:
+  - List view becomes cleaner and easier to scan.
+  - Readers supporting rich/media modules show better content and cover behavior.
+
+## D-033 Subscription-Scoped Event Visibility and Cleanup
+- Date: 2026-03-11
+- Status: Accepted
+- Context: User requested that unsubscribe should stop all residual notification side effects, and RSS/daily summary should only reflect still-subscribed works.
+- Decision:
+  - On unsubscribe, default behavior deletes pending unsummarized events for that subscription.
+  - Add optional hard-clean path: `DELETE /api/subscriptions/{id}?purge_history=true` also deletes summarized history events.
+  - RSS and daily-summary candidate queries join `subscriptions` and include only `status == active`.
+- Reason: Avoid stale/unwanted notifications after unsubscribe or pause, and keep feed/summary semantics aligned with current active subscriptions.
+- Impact:
+  - Residual historical events no longer leak into RSS/auto-summary when subscription is paused/deleted.
+  - Operators can choose between default safe cleanup and full history purge per unsubscribe action.
+
+## D-034 Events Endpoint Noise-Reduction Defaults
+- Date: 2026-03-11
+- Status: Accepted
+- Context: User reported Events panel was noisy due to debug entries and non-active/orphan history, which reduced operational readability.
+- Decision:
+  - `GET /api/events` defaults to filtering out:
+    - debug/simulated events (`dedupe_key` prefixed with `debug:`)
+    - non-active subscription events
+  - Keep opt-in diagnostic switches:
+    - `include_debug=true`
+    - `include_inactive=true`
+- Reason: Improve day-to-day readability without destructive data cleanup.
+- Impact:
+  - UI default Events list focuses on meaningful current operations.
+  - Debug/history data remains queryable for troubleshooting.
+
+## D-035 RSS Text-Only Output (No Image Fields)
+- Date: 2026-03-11
+- Status: Accepted
+- Context: User reported RSS readers could not reliably display cover images and requested removing image rendering expectations.
+- Decision:
+  - RSS output no longer publishes cover media fields (`media:thumbnail`, `enclosure`).
+  - Keep RSS entries text-focused via `title`/`description`/`content:encoded`.
+- Reason: Improve cross-reader compatibility and keep feed consumption predictable.
+- Impact:
+  - RSS feed is now text-only by design.
+  - This supersedes the image-field part of `D-032`.

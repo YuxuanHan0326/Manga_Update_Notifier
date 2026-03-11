@@ -9,11 +9,11 @@ import {
 
 describe('statusText', () => {
   it('returns new when summary is missing', () => {
-    expect(statusText({ summarized_at: null, notified_at: null })).toBe('new')
+    expect(statusText({ summarized_at: null, notified_at: null })).toBe('未汇总')
   })
 
   it('returns notified when both timestamps exist', () => {
-    expect(statusText({ summarized_at: 'x', notified_at: 'y' })).toBe('notified')
+    expect(statusText({ summarized_at: 'x', notified_at: 'y' })).toBe('已通知')
   })
 })
 

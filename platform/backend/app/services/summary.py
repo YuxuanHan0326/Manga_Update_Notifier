@@ -5,9 +5,10 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from ..models import NotificationDelivery, UpdateEvent
+from ..models import NotificationDelivery, Subscription, UpdateEvent
 from ..notifications.rss import compute_payload_hash
 from ..notifications.webhook import WebhookNotifier
+from .notification_payloads import build_enriched_events, build_webhook_payload
 from .settings import get_runtime_settings
 
 log = logging.getLogger(__name__)
@@ -17,6 +18,9 @@ def run_daily_summary(db: Session) -> dict:
     settings = get_runtime_settings(db)
     candidates = (
         db.query(UpdateEvent)
+        .join(Subscription, Subscription.id == UpdateEvent.subscription_id)
+        # Keep automatic summary aligned with user-visible subscriptions only.
+        .filter(Subscription.status == "active")
         .filter(UpdateEvent.summarized_at.is_(None))
         # Debug/simulated events should never pollute automatic daily summary pushes.
         .filter(UpdateEvent.dedupe_key.notlike("debug:%"))
@@ -29,29 +33,23 @@ def run_daily_summary(db: Session) -> dict:
     window_start = candidates[0].detected_at
     window_end = candidates[-1].detected_at
 
-    events_payload = [
-        {
-            "id": item.id,
-            "source_code": item.source_code,
-            "subscription_id": item.subscription_id,
-            "update_id": item.update_id,
-            "update_title": item.update_title,
-            "update_url": item.update_url,
-            "detected_at": item.detected_at.isoformat(),
-            "dedupe_key": item.dedupe_key,
-        }
-        for item in candidates
-    ]
+    events_payload = build_enriched_events(db, candidates, settings)
 
     delivered_channels: list[str] = []
 
     if settings.get("webhook_enabled") and settings.get("webhook_url"):
+        webhook_payload = build_webhook_payload(
+            event_type="daily_summary",
+            title="Daily Manga Updates",
+            events=events_payload,
+            window_start=window_start,
+            window_end=window_end,
+            generated_at=now,
+            timezone_name=str(settings.get("timezone", "UTC")),
+        )
         ok, payload_hash, err = WebhookNotifier().send(
             settings["webhook_url"],
-            "Daily Manga Updates",
-            events_payload,
-            window_start,
-            window_end,
+            webhook_payload,
         )
         db.add(
             NotificationDelivery(

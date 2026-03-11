@@ -35,6 +35,12 @@ from .schemas import (
     SubscriptionUpdate,
 )
 from .services.checker import run_update_check
+from .services.notification_payloads import (
+    build_enriched_events,
+    build_notification_event,
+    build_source_item_url,
+    build_webhook_payload,
+)
 from .services.settings import get_runtime_settings, upsert_ephemeral_settings, upsert_settings
 from .services.subscriptions import (
     backfill_subscription_covers,
@@ -342,10 +348,22 @@ def put_subscriptions(
 
 
 @router.delete("/subscriptions/{sub_id}", response_model=JobRunResponse)
-def del_subscriptions(sub_id: int, db: Session = Depends(get_db)) -> JobRunResponse:
-    if not delete_subscription(db, sub_id):
+def del_subscriptions(
+    sub_id: int,
+    purge_history: bool = Query(False),
+    db: Session = Depends(get_db),
+) -> JobRunResponse:
+    ok, removed_events = delete_subscription(db, sub_id, purge_history=purge_history)
+    if not ok:
         raise HTTPException(status_code=404, detail="subscription not found")
-    return JobRunResponse(status="ok", detail="deleted")
+    return JobRunResponse(
+        status="ok",
+        detail=(
+            "deleted, "
+            f"removed_events={removed_events}, "
+            f"purge_history={str(purge_history).lower()}"
+        ),
+    )
 
 
 @router.post("/subscriptions/{sub_id}/debug/simulate-update")
@@ -381,16 +399,39 @@ def post_debug_notify_test(sub_id: int, db: Session = Depends(get_db)) -> dict:
 
     cfg = get_runtime_settings(db)
     now = datetime.now(UTC)
+    # Keep debug endpoint resilient even if historical metadata is malformed.
+    try:
+        row_meta = json.loads(row.item_meta_json) if row.item_meta_json else {}
+    except Exception:  # noqa: BLE001
+        row_meta = {}
+    debug_update_id = f"debug-notify-{uuid4().hex[:8]}"
+    debug_dedupe_key = f"debug-notify:{row.source_code}:{row.id}"
+    source_item_url = build_source_item_url(row.source_code, row.item_id, cfg)
     event_payload = [
-        {
-            "update_title": f"[DEBUG] notify test for {row.item_title}",
-            "update_id": f"debug-notify-{uuid4().hex[:8]}",
-            "update_url": cfg["app_base_url"],
-            "subscription_id": row.id,
-            "source_code": row.source_code,
-            "dedupe_key": f"debug-notify:{row.source_code}:{row.id}",
-        }
+        build_notification_event(
+            source_code=row.source_code,
+            subscription_id=row.id,
+            item_id=row.item_id,
+            item_title=row.item_title,
+            cover=str(row_meta.get("cover") or ""),
+            source_item_url=source_item_url,
+            update_id=debug_update_id,
+            update_title=f"[DEBUG] notify test for {row.item_title}",
+            update_url=cfg["app_base_url"],
+            detected_at=now,
+            dedupe_key=debug_dedupe_key,
+            timezone_name=str(cfg.get("timezone", "UTC")),
+        )
     ]
+    webhook_payload = build_webhook_payload(
+        event_type="manual_test",
+        title="Manual Notification Test",
+        events=event_payload,
+        window_start=now,
+        window_end=now,
+        generated_at=now,
+        timezone_name=str(cfg.get("timezone", "UTC")),
+    )
 
     delivered_channels: list[str] = []
     skipped_channels: list[str] = []
@@ -399,10 +440,7 @@ def post_debug_notify_test(sub_id: int, db: Session = Depends(get_db)) -> dict:
     if cfg.get("webhook_enabled") and cfg.get("webhook_url"):
         ok, payload_hash, error = WebhookNotifier().send(
             cfg["webhook_url"],
-            "Manual Notification Test",
-            event_payload,
-            now,
-            now,
+            webhook_payload,
         )
         db.add(
             NotificationDelivery(
@@ -500,8 +538,19 @@ def post_run_summary(db: Session = Depends(get_db)) -> dict:
 
 
 @router.get("/events", response_model=list[EventResponse])
-def get_events(status: str = Query("all"), db: Session = Depends(get_db)) -> list[EventResponse]:
-    query = db.query(UpdateEvent).order_by(UpdateEvent.id.desc())
+def get_events(
+    status: str = Query("all"),
+    include_debug: bool = Query(False),
+    include_inactive: bool = Query(False),
+    db: Session = Depends(get_db),
+) -> list[EventResponse]:
+    # Default event list is user-facing, so we hide debug and non-active/orphan noise.
+    query = db.query(UpdateEvent).join(Subscription, Subscription.id == UpdateEvent.subscription_id)
+    if not include_inactive:
+        query = query.filter(Subscription.status == "active")
+    if not include_debug:
+        query = query.filter(UpdateEvent.dedupe_key.notlike("debug:%"))
+    query = query.order_by(UpdateEvent.id.desc())
     if status == "new":
         query = query.filter(UpdateEvent.summarized_at.is_(None))
     elif status == "summarized":
@@ -527,19 +576,17 @@ def get_events(status: str = Query("all"), db: Session = Depends(get_db)) -> lis
 @router.get("/notifications/rss.xml")
 def get_rss(db: Session = Depends(get_db)) -> Response:
     cfg = get_runtime_settings(db)
-    rows = db.query(UpdateEvent).order_by(UpdateEvent.id.desc()).limit(200).all()
-    events = [
-        {
-            "dedupe_key": r.dedupe_key,
-            "update_title": r.update_title,
-            "update_url": r.update_url,
-            "source_code": r.source_code,
-            "subscription_id": r.subscription_id,
-            "detected_at": r.detected_at,
-        }
-        for r in rows
-    ]
-    xml = render_rss(cfg["app_base_url"], events)
+    rows = (
+        db.query(UpdateEvent)
+        .join(Subscription, Subscription.id == UpdateEvent.subscription_id)
+        # RSS should only expose events from currently active subscriptions.
+        .filter(Subscription.status == "active")
+        .order_by(UpdateEvent.id.desc())
+        .limit(200)
+        .all()
+    )
+    events = build_enriched_events(db, rows, cfg)
+    xml = render_rss(cfg["app_base_url"], events, timezone_name=cfg["timezone"])
     return Response(content=xml, media_type="application/rss+xml")
 
 
@@ -551,12 +598,34 @@ def webhook_test(url: str | None = None, db: Session = Depends(get_db)) -> dict:
         raise HTTPException(status_code=400, detail="webhook_url is empty")
 
     now = datetime.now(UTC)
+    event_payload = [
+        build_notification_event(
+            source_code="system",
+            subscription_id=0,
+            item_id="webhook-test",
+            item_title="Webhook Test",
+            cover="",
+            source_item_url=cfg["app_base_url"],
+            update_id="test",
+            update_title="Webhook Test Message",
+            update_url=cfg["app_base_url"],
+            detected_at=now,
+            dedupe_key="system:webhook:test",
+            timezone_name=str(cfg.get("timezone", "UTC")),
+        )
+    ]
+    webhook_payload = build_webhook_payload(
+        event_type="webhook_test",
+        title="Webhook Test",
+        events=event_payload,
+        window_start=now,
+        window_end=now,
+        generated_at=now,
+        timezone_name=str(cfg.get("timezone", "UTC")),
+    )
     ok, payload_hash, error = WebhookNotifier().send(
         endpoint,
-        "Webhook Test",
-        [{"update_title": "test", "update_id": "test", "update_url": cfg["app_base_url"]}],
-        now,
-        now,
+        webhook_payload,
     )
     db.add(
         NotificationDelivery(

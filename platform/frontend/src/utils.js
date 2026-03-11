@@ -1,12 +1,12 @@
 export function statusText(event) {
   // Event status is derived from summary/notified timestamps to match backend semantics.
   if (!event.summarized_at) {
-    return 'new'
+    return '未汇总'
   }
   if (!event.notified_at) {
-    return 'summarized'
+    return '已汇总'
   }
-  return 'notified'
+  return '已通知'
 }
 
 function pad2(value) {

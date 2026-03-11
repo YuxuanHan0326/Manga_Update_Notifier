@@ -17,7 +17,7 @@
 
 | ID | Task | Req | Started | Notes |
 |---|---|---|---|---|
-| None | - | - | - | - |
+| T-061 | Collect user acceptance feedback for text-only RSS output | FR-006, FR-007 | 2026-03-11 | Verify reader side no longer expects/renders RSS cover images and text content remains readable |
 
 ## BLOCKED
 
@@ -29,6 +29,17 @@
 
 | ID | Task | Req | Completed | Notes |
 |---|---|---|---|---|
+| T-060 | Remove RSS cover-image output and keep text-only RSS entries | FR-006, FR-007 | 2026-03-11 | Removed RSS image fields (`media:thumbnail`/`enclosure`) and media namespace; updated integration test and docs; backend checks + Docker health verification passed |
+| T-059 | Collect user acceptance feedback for subscribe success hint and new title text | FR-003, FR-004 | 2026-03-11 | User moved to next RSS-format change before standalone acceptance closure; task superseded by new implementation round |
+| T-058 | Add explicit subscribe success feedback and rename main title to `Manga Update Notifier` | FR-003, FR-004 | 2026-03-11 | Updated `main.js` title and subscribe success alert feedback; frontend lint/test/build + Docker runtime health verification passed |
+| T-057 | Collect user acceptance feedback for the localization mojibake fix | FR-003, FR-004, FR-005 | 2026-03-11 | User requested follow-up UI changes before standalone acceptance closure; round superseded by new implementation task |
+| T-056 | Fix mojibake in newly localized UI text and restore title to Manga_Update_Notifier | FR-003, FR-004, FR-005, NFR-001 | 2026-03-11 | Repaired garbled newly-added UI Chinese text in frontend rendering path, restored H1 title to exact `Manga_Update_Notifier`, and passed frontend lint/test/build + Docker health verification |
+| T-055 | Localize Web UI text to Chinese (retain required proper nouns only) | FR-003, FR-004, FR-005, NFR-002 | 2026-03-11 | Localized page labels/buttons/messages and event status text; kept CopyManga/KXO/RSS/Webhook/Cron terms; frontend/backend validation and Docker verification passed |
+| T-054 | Clean up Events view defaults: hide debug/orphan/non-active noise by default | FR-006, NFR-003 | 2026-03-11 | `/api/events` now defaults to active + non-debug only; added optional diagnostics flags, tests, docs, and Docker verification |
+| T-053 | Implement subscription/event lifecycle v2: unsubscribe cleanup + active-subscription-only RSS/summary | FR-003, FR-006, FR-007, BR-003 | 2026-03-11 | Added unsubscribe `purge_history` option, default pending-event cleanup, active-only RSS and summary joins, regression tests, and Docker verification |
+| T-052 | Fix CopyManga RSS links pointing to wrong domain by canonical URL normalization | FR-006, FR-007, NFR-001 | 2026-03-11 | URL builder switched to `www.mangacopy.com`; legacy `copymanga.site` links are normalized at payload-build time; tests + Docker verification passed |
+| T-051 | Improve RSS reader display quality and information layout (without changing debug inclusion policy) | FR-006, FR-007, NFR-002 | 2026-03-11 | Refined RSS layout for reader UX (`description` summary + `content:encoded` details + media thumbnail/enclosure) with tests and Docker verification |
+| T-050 | Upgrade notification payloads (Webhook + RSS) to reader/automation-friendly structures and drop legacy format | FR-006, FR-007, NFR-002 | 2026-03-11 | Replaced legacy webhook/rss payloads with webhook v2 enriched contract and reader-friendly RSS output; tests + Docker verification passed |
 | T-049 | Normalize garbled markdown docs and prepare a clean repository commit | NFR-002 | 2026-03-11 | Repaired markdown garble/question-mark corruption in active ledger docs and completed commit handoff preparation |
 | T-048 | Debug KXO cover extraction failure and fix if extraction path is broken | FR-003, NFR-001, NFR-002 | 2026-03-11 | Root cause: `mxomo` cover CDN rejects specific referer strategy in proxy path (403); fixed proxy referer fallback order and verified KXO cover proxy returns image 200 |
 | T-047 | Fix subscription cover render failure and schedule checkbox alignment | FR-003, FR-005, NFR-001, NFR-002 | 2026-03-11 | Added constrained cover proxy endpoint + frontend cover fallback binding; adjusted schedule toggle layout (label left, checkbox right/near); validation and Docker runtime checks passed |

@@ -24,18 +24,23 @@ Phase 1 is a Docker-first single-service architecture with:
   - `subscriptions.py`: CRUD service logic
   - `checker.py`: update detection + dedupe event creation
   - `summary.py`: daily aggregation + channel delivery bookkeeping
+  - `notification_payloads.py`: unified event enrichment + webhook payload composition
   - `settings.py`: runtime config persistence/merge + in-memory ephemeral overrides
   - `timezone.py`: client-IP timezone detection with private-IP fallback lookup
   - `bootstrap.py`: seed source metadata
 - `app.notifications`:
-  - `webhook.py`: outbound POST delivery
-  - `rss.py`: RSS feed rendering
+  - `webhook.py`: outbound POST delivery (v2 payload body transport)
+  - `rss.py`: RSS feed rendering (reader-friendly description text)
 
 ## Key API Additions (Current)
 - `GET /api/timezones`: returns available timezone identifiers for UI dropdown.
 - `GET /api/cover-proxy`: proxies allowed source cover hosts for stable UI rendering (includes host-specific referer fallback for KXO CDN behavior).
 - `POST /api/subscriptions/{id}/debug/simulate-update`: creates debug-only synthetic event.
 - `POST /api/subscriptions/{id}/debug/notify-test`: runs per-subscription notification test.
+- `DELETE /api/subscriptions/{id}`: removes subscription and default-cleans unsummarized events.
+  - Optional query `purge_history=true` also deletes summarized historical events.
+- `GET /api/events`: default filters to active-subscription + non-debug events for cleaner operator view.
+  - Optional query switches: `include_debug=true`, `include_inactive=true`.
 - `POST /api/subscriptions/manual-kxo`: accepts KXO URL/ID and creates subscription via backend parsing.
 - `POST /api/settings/kxo/test`: validates KXO runtime configuration state.
 
@@ -52,11 +57,27 @@ Phase 1 is a Docker-first single-service architecture with:
 3. Check job (`run_update_check`) calls adapter `list_updates` per active subscription.
 4. New chapters become `update_events` (deduped by unique `dedupe_key`).
    - Checker also persists last-seen title/time into subscription metadata for UI display.
-5. Daily summary job reads unsummarized events and dispatches:
+5. Daily summary job reads unsummarized events for active subscriptions only and dispatches:
   - Webhook (if enabled)
   - RSS channel record (if enabled)
    - Summary candidate query excludes debug events (`dedupe_key` with `debug:` prefix).
+   - Events tied to paused/deleted subscriptions are excluded from automatic summary.
+   - Event payload enrichment attaches subscription title/cover/source links for downstream templating.
 6. Successful delivery marks events `summarized_at`/`notified_at`.
+7. RSS feed query also joins active subscriptions only, so paused/deleted-subscription residual events are hidden from feed output.
+
+## Notification Payload Contract
+- Webhook uses `schema_version=2.0` payload with:
+  - summary metadata (`event_type`, `generated_at`, `timezone`, counters)
+  - enriched per-event blocks:
+    - `subscription`: `item_id`, `item_title`, `cover`, `source_item_url`
+    - `update`: `update_id`, `update_title`, `update_url`, UTC/local detected time, `dedupe_key`
+- RSS items are generated from the same enriched event view and target direct reader usability:
+  - title: `作品名 · 最新话`
+  - description: short summary line for compact list rendering in readers
+  - `content:encoded`: detailed text block for expanded reading
+  - `media:thumbnail` + `enclosure`: cover metadata without polluting text body
+  - CopyManga URL normalization: legacy/bad-domain links are rewritten to official `www.mangacopy.com` at payload-build time
 
 ## Adapter Runtime Notes
 - `copymanga` search results are enriched by webpage metadata scraping fallback.

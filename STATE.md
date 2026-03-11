@@ -9,6 +9,59 @@
 Stabilize and harden the shipped Phase 1 implementation for production use on NAS.
 
 ## What Is Done In This Iteration
+- Completed RSS text-only output adjustment round:
+  - Removed RSS cover image fields (`media:thumbnail`, `enclosure`) and media namespace.
+  - Kept text-first reader-friendly output (`title`, `description`, `content:encoded`).
+  - Updated integration tests and README to reflect no-image RSS behavior.
+  - Validation passed (`ruff`, `pytest 48 passed`) and Docker runtime verification passed (`docker compose up -d --build`, `docker compose ps`, `/api/health`).
+- Completed subscribe-feedback + title-text refinement round:
+  - Main page title changed to `Manga Update Notifier` (underscore removed).
+  - CopyManga subscribe action now shows explicit success feedback popup on successful creation.
+  - Added concise debug comment near the new feedback path to clarify intent.
+  - Validation passed (`npm run lint/test/build`) and Docker runtime verification passed (`docker compose up -d --build`, `docker compose ps`, `/api/health`).
+- Completed localized UI mojibake bugfix round:
+  - Fixed garbled newly-added Chinese labels in frontend UI rendering path.
+  - Restored and locked main title to exact `Manga_Update_Notifier` (not localized).
+  - Validation passed (`npm run lint/test/build`).
+  - Docker runtime verification passed (`docker compose up -d --build`, `docker compose ps`, `/api/health`).
+- Completed Web UI Chinese-localization round:
+  - Localized user-facing UI text in `General`/`CopyManga`/`KXO` sections (titles, buttons, hints, table headers, alerts).
+  - Localized event status display text to `未汇总 / 已汇总 / 已通知`.
+  - Kept necessary technical/proper nouns in English (`CopyManga`, `KXO`, `RSS`, `Webhook`, `Cron`, `URL/IP`, API query parameter names).
+  - Frontend validations passed (`npm run lint/test/build`), backend validations remained green (`ruff`, `pytest 48 passed`), and Docker runtime verification passed.
+- Completed Events readability bugfix round:
+  - Updated `/api/events` default query to hide debug and non-active/orphan event noise.
+  - Added diagnostic query switches `include_debug` and `include_inactive` for troubleshooting paths.
+  - Updated Events UI guide text to explain default filtering behavior.
+  - Added integration tests for default hidden behavior and opt-in diagnostic inclusion behavior.
+  - Validation passed (`ruff`, `pytest 48 passed`, frontend lint/test/build) and Docker runtime verification passed.
+- Completed subscription lifecycle v2 behavior update:
+  - `DELETE /api/subscriptions/{id}` now removes pending unsummarized events by default.
+  - Added optional hard-clean mode `?purge_history=true` to delete summarized history events.
+  - RSS query now joins subscriptions and only exposes events from `status=active`.
+  - Daily summary candidate query now joins subscriptions and only aggregates `status=active` + real unsummarized events.
+  - Added regression tests for unsubscribe cleanup and active-only RSS/summary behavior.
+  - Validation passed (`ruff`, `pytest 46 passed`) and Docker runtime verification passed (`compose up`, `ps`, `/api/health`).
+- Completed CopyManga RSS domain safety bugfix:
+  - Fixed source-item URL generation to official `www.mangacopy.com`.
+  - Added payload-time URL normalization for legacy `copymanga.site` links in historical events.
+  - Applied normalization to both webhook and RSS event links via shared notification payload builder.
+  - Added unit/integration regression coverage and passed validation (`ruff`, `pytest 42 passed`).
+  - Completed runtime Docker verification and live RSS domain check (`NO_BAD_DOMAIN`).
+- Completed RSS reader-UX refinement round:
+  - Refined RSS structure for better list readability and information density.
+  - `description` now serves as compact summary; `content:encoded` carries detailed text.
+  - Cover is now exposed via `media:thumbnail` and `enclosure` instead of long URL text in main body.
+  - Added compatibility metadata (`atom:link`, `category`, `guid isPermaLink=false`).
+  - Updated tests and passed validation (`ruff`, `pytest 38 passed`).
+  - Completed runtime Docker verification (`compose up -d --build`, `compose ps`, `/api/health`).
+- Completed notification payload breaking-upgrade round:
+  - Replaced legacy webhook payload with v2 enriched structure (`schema_version=2.0`) for downstream n8n/message templating.
+  - Replaced legacy RSS sparse output with reader-friendly title/description text.
+  - Added shared payload-enrichment module to keep webhook and RSS data projection aligned.
+  - Updated debug webhook test paths to new payload format.
+  - Added regression tests and passed validation (`ruff`, `pytest 38 passed`).
+  - Completed runtime Docker verification (`compose up -d --build`, `compose ps`, `/api/health`).
 - Completed markdown garble cleanup round:
   - Repaired broken `WORKLOG.md` lines that had `?` placeholder corruption.
   - Normalized/validated markdown encoding as UTF-8 across active docs.
@@ -158,8 +211,8 @@ Stabilize and harden the shipped Phase 1 implementation for production use on NA
   - Synced docs and requirements/brief after approved scope change; full validation and Docker runtime checks passed.
 
 ## Next Step
-1. Collect user acceptance feedback on manual-only KXO flow and subscription cover rendering.
-2. Run NAS-side real-site smoke checks for KXO manual URL/ID subscription + update-detection path.
+1. Collect user acceptance feedback for text-only RSS output and readability in target reader.
+2. Continue NAS-side real-site smoke checks for KXO manual URL/ID subscription + update-detection path.
 3. Apply branch protection/ruleset in GitHub UI using `docs/branch-protection.md` and verify required checks are enforced.
 
 ## Active Risks
