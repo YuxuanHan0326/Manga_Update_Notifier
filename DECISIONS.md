@@ -437,3 +437,17 @@
   - `python-audit` can pass once patched dependency graph is resolved.
   - `frontend-audit` no longer fails at tool bootstrap stage.
   - Trivy mirror/caching behavior becomes deterministic in container mode.
+
+## D-039 Trivy Gate Uses `ignore-unfixed` with Fixable-High Blocking
+- Date: 2026-03-12
+- Status: Accepted
+- Context: Remaining Trivy failure was caused by a mix of:
+  - fixable Python package HIGH findings (`setuptools` vendored `jaraco.context`, `wheel`)
+  - Debian `glibc` HIGH finding with no upstream fixed version yet (`FixedVersion: None`)
+- Decision:
+  - Runtime image build upgrades packaging toolchain (`setuptools`, `wheel`) to patched versions.
+  - Trivy scan keeps `HIGH/CRITICAL` fail gate, and adds `--ignore-unfixed` to avoid blocking on advisories without available fixes.
+- Reason: Preserve strictness for actionable vulnerabilities while preventing indefinite CI blockage on no-fix upstream issues.
+- Impact:
+  - Fixable HIGH/CRITICAL findings still fail CI.
+  - No-fix vulnerabilities are visible in reports but no longer hard-block merges/releases.

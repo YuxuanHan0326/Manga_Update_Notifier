@@ -1,7 +1,7 @@
 # Next Step
 
 ## Current Task
-Validate and stabilize the updated GitHub Actions security workflow on remote runners.
+Diagnose and fix the remaining `trivy-image` failure in GitHub Actions security workflow.
 
 ## Progress So Far
 - New remote failure evidence received:
@@ -13,14 +13,19 @@ Validate and stabilize the updated GitHub Actions security workflow on remote ru
   - reordered frontend workflow so `pnpm/action-setup` runs before `setup-node` pnpm cache;
   - passed Trivy DB env vars into container and set `--scanners vuln` for deterministic vuln-only gate;
   - revalidated workflow syntax (`security.yml syntax ok`).
+- Trivy-only follow-up completed:
+  - reproduced scan locally and extracted exact HIGH findings (5 total: 2 no-fix `libc*`, 3 fixable Python packaging findings).
+  - upgraded runtime image packaging toolchain in `platform/Dockerfile` (`setuptools`, `wheel`) to patched versions.
+  - added Trivy `--ignore-unfixed` so CI blocks only actionable HIGH/CRITICAL vulnerabilities.
+  - local Trivy gate command now passes with `exit-code 0` under the same workflow flags.
 
 ## Current Blockers
-- Waiting for remote GitHub Actions rerun to confirm all three jobs are green with the new pins/order.
+- Waiting for remote GitHub Actions rerun confirmation after Trivy strategy update.
 
 ## Next Concrete Edits
-1. Push current branch and run `Security` via `workflow_dispatch`.
-2. If any job still fails, capture exact failing step logs and apply narrow follow-up fixes without reducing severity gates.
-3. After remote green, close `T-064` and sync branch-protection required checks if needed.
+1. Push current branch and rerun `Security` workflow.
+2. Confirm `trivy-image` passes and that SARIF artifact still uploads.
+3. If remote still fails, capture the generated SARIF and patch only the remaining root cause.
 
 ## Constraints Not To Forget
 - Minimal-change CI fix only; do not expand product features.

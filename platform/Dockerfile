@@ -9,7 +9,9 @@ FROM python:3.11-slim
 WORKDIR /app
 
 COPY backend/requirements.txt ./backend/requirements.txt
-RUN pip install --no-cache-dir -r backend/requirements.txt
+# Keep packaging toolchain on patched versions to avoid known HIGH CVEs in runtime image scan.
+RUN pip install --no-cache-dir -r backend/requirements.txt \
+    && pip install --no-cache-dir --upgrade setuptools wheel
 
 COPY backend /app/backend
 COPY --from=frontend-builder /app/frontend/dist /app/frontend_dist

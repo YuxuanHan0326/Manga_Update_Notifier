@@ -168,6 +168,9 @@ curl -X POST http://localhost:8000/api/subscriptions/manual-kxo `
   - 安装依赖步骤增加短重试，降低 runner 临时网络抖动导致的误失败
   - Trivy 改用 GHCR 镜像与缓存目录，减少拉取限流/冷启动抖动
   - 所有安全 job 增加 `timeout`，避免挂起占用 runner
+- Trivy 门禁策略补充：
+  - Trivy 使用 `--ignore-unfixed`：仍然阻断 `HIGH/CRITICAL`，但仅针对“已有修复版本”的漏洞。
+  - 对上游“暂无修复版本”的基础镜像漏洞（例如 Debian 临时无补丁窗口）不做硬阻断，避免流水线长期不可通过。
 - 常见失败解释：
   - 若 `python-audit` 失败并提示 `starlette` CVE，通常代表后端依赖基线仍需升级到包含修复版本的组合。
   - 若 `trivy-image` 失败但日志显示扫描已执行完成，通常代表镜像中存在真实 `HIGH/CRITICAL` 漏洞，而非 workflow 兼容性错误。

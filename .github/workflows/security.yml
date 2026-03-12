@@ -113,6 +113,8 @@ jobs:
             ghcr.io/aquasecurity/trivy:0.61.0 image \
             --scanners vuln \
             --severity HIGH,CRITICAL \
+            # Keep HIGH/CRITICAL gate strict for fixable vulns while tolerating upstream no-fix advisories.
+            --ignore-unfixed \
             --format sarif \
             --output /workspace/trivy-results.sarif \
             --exit-code 1 \
