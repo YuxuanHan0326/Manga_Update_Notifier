@@ -98,6 +98,21 @@ def test_extract_web_meta_parses_cover_from_meta_and_json():
     assert meta2["cover"] == "https://img.copy.test/cover-b.jpg"
 
 
+def test_extract_web_meta_parses_cover_from_lazyload_data_src():
+    html = """
+    <div class="comicParticulars-left-img loadingIcon">
+      <img class="lazyload" data-src="https://sy.mangafunb.fun/y/demo/cover/123.jpg.328x422.jpg">
+    </div>
+    """
+    meta = CopyMangaAdapter._extract_web_meta(html)
+    assert meta["cover"] == "https://sy.mangafunb.fun/y/demo/cover/123.jpg.328x422.jpg"
+
+
+def test_normalize_cover_url_supports_relative_path():
+    out = CopyMangaAdapter._normalize_cover_url("/y/demo/cover/123.jpg")  # noqa: SLF001
+    assert out == "https://www.mangacopy.com/y/demo/cover/123.jpg"
+
+
 def test_extract_web_meta_parses_json_embedded_update_and_non_standard_chapter_name():
     html = """
     <script>

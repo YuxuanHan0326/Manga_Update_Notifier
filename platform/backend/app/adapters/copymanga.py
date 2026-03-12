@@ -69,6 +69,9 @@ class CopyMangaAdapter:
             return ""
         if text.startswith("//"):
             return f"https:{text}"
+        if text.startswith("/"):
+            # Some comic pages expose cover in relative path form under `img data-src/src`.
+            return f"https://www.mangacopy.com{text}"
         return text
 
     @classmethod
@@ -82,6 +85,9 @@ class CopyMangaAdapter:
             r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']',
             r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']',
             r'"cover"\s*:\s*"([^"]+)"',
+            # Some CopyManga pages (including H5-style details)
+            # only expose cover via `<img data-src/src>`.
+            r'<img[^>]+(?:data-src|src)=["\']([^"\']+/cover/[^"\']+)["\']',
         ]
         for pattern in cover_patterns:
             match = re.search(pattern, html, flags=flags)
@@ -356,7 +362,9 @@ class CopyMangaAdapter:
                 AdapterSearchResult(
                     item_id=raw.get("path_word", ""),
                     title=raw.get("name", ""),
-                    cover=raw.get("cover", ""),
+                    # Normalize API cover so frontend proxy input stays stable
+                    # across absolute/relative forms.
+                    cover=self._normalize_cover_url(str(raw.get("cover", ""))),
                     author=author,
                     group_word="default",
                     meta={"alias": raw.get("alias")},

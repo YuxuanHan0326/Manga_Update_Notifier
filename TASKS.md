@@ -17,7 +17,7 @@
 
 | ID | Task | Req | Started | Notes |
 |---|---|---|---|---|
-| T-064 | Harden GitHub Actions security workflow for runner compatibility and stable diagnostics | NFR-005, NFR-002 | 2026-03-12 | Applied fixes for Starlette CVE baseline, pnpm cache order, Trivy env pass-through, runtime packaging CVE remediation, `ignore-unfixed` policy, and shell-continuation bugfix; awaiting remote rerun confirmation |
+| None | - | - | - | - |
 
 ## BLOCKED
 
@@ -29,6 +29,8 @@
 
 | ID | Task | Req | Completed | Notes |
 |---|---|---|---|---|
+| T-065 | Fix CopyManga cover render failures for specific comics (e.g. `yumaoxianglinshangbushilian`) | FR-003, FR-004, NFR-001 | 2026-03-12 | Root cause fixed in two points: CopyManga web-meta parser now supports `img data-src/src` cover extraction; cover proxy now accepts CDN `octet-stream` only when URL is image-like and rewrites media type to `image/*`; added unit+integration regression tests; backend suite (`55 passed`) and Docker runtime verification passed |
+| T-064 | Harden GitHub Actions security workflow for runner compatibility and stable diagnostics | NFR-005, NFR-002 | 2026-03-12 | Closed after remote rerun recovery confirmation from user; fixes include Starlette CVE baseline, pnpm cache order, Trivy env pass-through, runtime packaging CVE remediation, `ignore-unfixed`, and shell-continuation bugfix |
 | T-063 | Collect user acceptance feedback for residual mojibake repair | FR-003, FR-006 | 2026-03-12 | Superseded by higher-priority CI/security stabilization round; acceptance follow-up deferred |
 | T-062 | Fix residual Chinese mojibake in stored titles/events rendering path | FR-003, FR-006, NFR-001 | 2026-03-11 | Added safe mojibake repair helper and applied to subscription/event/notification output paths; cleaned garbled literals in tests; backend checks (`ruff`, `pytest 52 passed`) and Docker runtime verification passed |
 | T-061 | Collect user acceptance feedback for text-only RSS output | FR-006, FR-007 | 2026-03-11 | User reported new residual mojibake issue before standalone acceptance closure; task superseded by bugfix round |

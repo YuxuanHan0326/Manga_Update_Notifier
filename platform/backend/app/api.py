@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -63,6 +64,17 @@ _ALLOWED_COVER_HOST_SUFFIXES = (
     "kxo.moe",
 )
 
+_IMAGE_CONTENT_TYPE_BY_EXT = {
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "webp": "image/webp",
+    "gif": "image/gif",
+    "bmp": "image/bmp",
+    "avif": "image/avif",
+    "svg": "image/svg+xml",
+}
+
 
 def _is_allowed_cover_host(host: str) -> bool:
     normalized = (host or "").strip().lower()
@@ -72,6 +84,18 @@ def _is_allowed_cover_host(host: str) -> bool:
         normalized == suffix or normalized.endswith(f".{suffix}")
         for suffix in _ALLOWED_COVER_HOST_SUFFIXES
     )
+
+
+def _guess_cover_media_type(parsed_url) -> str | None:
+    path = (parsed_url.path or "").lower()
+    if not path:
+        return None
+    # Some source CDN paths contain chained suffixes
+    # (e.g. `.jpg.328x422.jpg`), keep the last image ext.
+    extensions = re.findall(r"\.(avif|webp|jpe?g|png|gif|bmp|svg)", path)
+    if not extensions:
+        return None
+    return _IMAGE_CONTENT_TYPE_BY_EXT.get(extensions[-1])
 
 
 def _cover_referer_candidates(parsed_url) -> list[str | None]:
@@ -189,7 +213,25 @@ def get_cover_proxy(url: str = Query(..., min_length=1)) -> Response:
             continue
 
         content_type = str(upstream.headers.get("content-type", "")).lower()
-        if not content_type.startswith("image/"):
+        content_type_main = content_type.split(";", 1)[0].strip()
+        effective_media_type = content_type_main
+        if not content_type_main.startswith("image/"):
+            guessed_media_type = _guess_cover_media_type(parsed)
+            # CopyManga CDN may return `binary/octet-stream` for image bytes.
+            # Accept this only when URL path still looks like an image file.
+            if (
+                content_type_main in {"binary/octet-stream", "application/octet-stream"}
+                and guessed_media_type
+            ):
+                effective_media_type = guessed_media_type
+            else:
+                last_error = (
+                    "cover proxy upstream returned non-image payload "
+                    f"(content_type={content_type_main}, referer={referer or '<none>'})"
+                )
+                continue
+
+        if not effective_media_type:
             last_error = (
                 "cover proxy upstream returned non-image payload "
                 f"(referer={referer or '<none>'})"
@@ -198,7 +240,7 @@ def get_cover_proxy(url: str = Query(..., min_length=1)) -> Response:
 
         return Response(
             content=upstream.content,
-            media_type=content_type,
+            media_type=effective_media_type,
             headers={"Cache-Control": "public, max-age=21600"},
         )
 

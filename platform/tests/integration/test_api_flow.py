@@ -345,6 +345,33 @@ def test_cover_proxy_allows_known_host_and_returns_image(monkeypatch):
     assert out.content == b"demo-bytes"
 
 
+def test_cover_proxy_accepts_octet_stream_when_url_looks_like_image(monkeypatch):
+    class _FakeOctetResponse:
+        status_code = 200
+        headers = {"content-type": "binary/octet-stream"}
+        content = b"octet-image-bytes"
+
+        def raise_for_status(self) -> None:
+            return None
+
+    def _fake_get(url: str, headers: dict, timeout: int, follow_redirects: bool):
+        assert url.startswith("https://sy.mangafunb.fun/")
+        assert timeout == 15
+        assert follow_redirects is True
+        return _FakeOctetResponse()
+
+    monkeypatch.setattr(api_module.httpx, "get", _fake_get)
+    client = TestClient(app)
+
+    out = client.get(
+        "/api/cover-proxy",
+        params={"url": "https://sy.mangafunb.fun/y/demo/cover/123.jpg.328x422.jpg"},
+    )
+    assert out.status_code == 200
+    assert out.headers["content-type"].startswith("image/jpeg")
+    assert out.content == b"octet-image-bytes"
+
+
 def test_cover_proxy_mxomo_uses_referer_fallback(monkeypatch):
     class _Resp:
         def __init__(self, status_code: int) -> None:

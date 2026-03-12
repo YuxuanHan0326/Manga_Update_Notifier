@@ -1,38 +1,33 @@
 # Next Step
 
 ## Current Task
-Diagnose and fix the remaining `trivy-image` failure in GitHub Actions security workflow.
+Collect user acceptance feedback for CopyManga cover fix and monitor for additional CDN edge cases.
 
 ## Progress So Far
-- New remote failure evidence received:
-  - `python-audit`: blocked by `starlette 0.48.0` (`CVE-2025-62727`, fix `>=0.49.1`)
-  - `frontend-audit`: `setup-node` cache step errors with `Unable to locate executable file: pnpm`
-  - `trivy-image`: scanner still exits non-zero after scan, consistent with unresolved high vulnerability in image deps
-- Applied fixes:
-  - bumped backend baseline to `fastapi==0.121.3` to move Starlette resolution to patched range;
-  - reordered frontend workflow so `pnpm/action-setup` runs before `setup-node` pnpm cache;
-  - passed Trivy DB env vars into container and set `--scanners vuln` for deterministic vuln-only gate;
-  - revalidated workflow syntax (`security.yml syntax ok`).
-- Trivy-only follow-up completed:
-  - reproduced scan locally and extracted exact HIGH findings (5 total: 2 no-fix `libc*`, 3 fixable Python packaging findings).
-  - upgraded runtime image packaging toolchain in `platform/Dockerfile` (`setuptools`, `wheel`) to patched versions.
-  - added Trivy `--ignore-unfixed` so CI blocks only actionable HIGH/CRITICAL vulnerabilities.
-  - local Trivy gate command now passes with `exit-code 0` under the same workflow flags.
-- Final workflow bug identified:
-  - the Trivy `run:` block had an inline shell comment inside a backslash-continued command;
-  - this prevented `--ignore-unfixed` from being passed to the actual `docker run ... trivy` invocation on GitHub Actions.
-  - moved the comment above `docker run` so the executed command now includes `--ignore-unfixed`.
+- Root cause confirmed for reported comic:
+  - CopyManga page provided cover via `<img data-src=.../cover/...>` instead of `og:image`/JSON `cover`.
+  - CDN returned image bytes with `content-type: binary/octet-stream`, causing proxy rejection.
+- Applied minimal fixes:
+  - `copymanga.py`: add cover extraction fallback from `img data-src/src` and normalize relative cover URL.
+  - `api.py`: cover proxy accepts `octet-stream` only when URL path looks like image, then maps to inferred `image/*` type.
+- Added regression coverage:
+  - `test_copymanga_adapter.py`: cover extraction from lazyload `data-src`, relative cover normalization.
+  - `test_api_flow.py`: cover-proxy accepts `octet-stream` for image-like cover URL.
+- Validation done:
+  - `ruff check .` passed.
+  - `pytest ../tests` passed (`55 passed`).
+  - Docker rebuild/start + runtime health passed.
+  - Live proxy probe for reported cover URL returned `200 image/jpeg`.
 
 ## Current Blockers
-- Waiting for remote GitHub Actions rerun confirmation after the shell-continuation bugfix.
+- None.
 
 ## Next Concrete Edits
-1. Push current branch and rerun `Security` workflow.
-2. Confirm `trivy-image` command log now visibly contains `--ignore-unfixed`, and that SARIF artifact still uploads.
-3. If remote still fails after that, capture the generated SARIF and patch only the remaining root cause.
+1. Ask user to hard-refresh frontend and recheck previously failing CopyManga covers.
+2. If any specific cover still fails, capture that cover URL and proxy error detail for targeted host-level fallback.
+3. Optionally add one more integration test for any newly observed host/content-type edge case.
 
 ## Constraints Not To Forget
-- Minimal-change CI fix only; do not expand product features.
-- All changes must map to `NFR-005` and `NFR-002`.
-- Keep vulnerability gate semantics explicit (no silent downgrade to pass).
+- Keep proxy safety boundary strict (allowed host list + image-like URL requirement).
+- Do not broaden to generic open proxy behavior.
 - Update ledger/docs per protocol.

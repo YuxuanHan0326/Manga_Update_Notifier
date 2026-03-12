@@ -9,6 +9,20 @@
 Stabilize and harden the shipped Phase 1 implementation for production use on NAS.
 
 ## What Is Done In This Iteration
+- Completed CopyManga cover-render bugfix round (reported sample: `yumaoxianglinshangbushilian`):
+  - Root cause 1: CopyManga page may expose cover only via `<img data-src/src .../cover/...>`; old parser only matched `og:image`/JSON `cover`.
+  - Root cause 2: Some CopyManga CDN endpoints return image bytes with `content-type: binary/octet-stream`; old cover-proxy rejected non-`image/*`.
+  - Backend fix:
+    - `copymanga.py` now supports `img data-src/src` cover extraction fallback and normalizes relative cover paths.
+    - `/api/cover-proxy` now accepts `octet-stream` only when URL path is image-like and rewrites media type to inferred `image/*`.
+  - Regression coverage:
+    - unit tests for data-src cover extraction + relative cover normalization.
+    - integration test for octet-stream cover proxy acceptance.
+  - Validation:
+    - `ruff check .` passed.
+    - backend full tests passed (`55 passed`).
+    - Docker runtime verification passed (`compose up -d --build`, `compose ps`, `/api/health`).
+    - Live proxy verification for reported cover URL passed (`200`, `image/jpeg`).
 - Completed security follow-up bugfix round based on new remote logs:
   - Resolved Python audit baseline issue by bumping backend dependency pin to `fastapi==0.121.3` (patched Starlette path).
   - Fixed frontend audit toolchain order (`pnpm/action-setup` before `setup-node` pnpm cache usage).
@@ -243,10 +257,9 @@ Stabilize and harden the shipped Phase 1 implementation for production use on NA
   - Synced docs and requirements/brief after approved scope change; full validation and Docker runtime checks passed.
 
 ## Next Step
-1. Push current branch and rerun `Security` workflow via `workflow_dispatch`, then verify `python-audit` / `frontend-audit` / `trivy-image` stability.
-2. If any security job still fails, capture exact failing step logs and apply a narrow compatibility fix without lowering severity gates.
-3. Continue NAS-side real-site smoke checks for KXO manual URL/ID subscription + update-detection path.
-4. Apply branch protection/ruleset in GitHub UI using `docs/branch-protection.md` and verify required checks are enforced.
+1. Ask user to hard-refresh browser and verify previously failing CopyManga covers now render in Search and Subscriptions.
+2. If any cover still fails, collect the exact cover URL and `/api/cover-proxy` response detail for targeted fallback patch.
+3. Continue periodic CI/security workflow monitoring as a parallel maintenance stream.
 
 ## Active Risks
 - R-001: Source anti-bot/rate-limit behavior may still impact long-term stability.
