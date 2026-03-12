@@ -148,3 +148,14 @@
   - workflow YAML parse passed (`security.yml syntax ok`);
   - local Trivy gate command (same flags as workflow) now returns pass with zero blocking vulnerabilities;
   - Docker runtime verification passed (`compose up -d --build`, `compose ps`, `/api/health`).
+
+### 04. Trivy Shell Continuation Bugfix (T-064)
+- User reported the newest GitHub Actions run still failed and shared a log without `--ignore-unfixed` in the executed Trivy command.
+- Root cause confirmed in workflow source:
+  - the Trivy `run:` script placed a `# ...` shell comment inside a backslash-continued command.
+  - in bash, that comment truncates the logical command line, so `--ignore-unfixed` never reaches Trivy.
+- Fix applied:
+  - moved the explanatory comment above `docker run` in `.github/workflows/security.yml`.
+- Validation:
+  - YAML parse still passes (`security.yml syntax ok`).
+- Docker rebuild skipped per protocol exception because this round only changed workflow/ledger files.

@@ -18,14 +18,18 @@ Diagnose and fix the remaining `trivy-image` failure in GitHub Actions security 
   - upgraded runtime image packaging toolchain in `platform/Dockerfile` (`setuptools`, `wheel`) to patched versions.
   - added Trivy `--ignore-unfixed` so CI blocks only actionable HIGH/CRITICAL vulnerabilities.
   - local Trivy gate command now passes with `exit-code 0` under the same workflow flags.
+- Final workflow bug identified:
+  - the Trivy `run:` block had an inline shell comment inside a backslash-continued command;
+  - this prevented `--ignore-unfixed` from being passed to the actual `docker run ... trivy` invocation on GitHub Actions.
+  - moved the comment above `docker run` so the executed command now includes `--ignore-unfixed`.
 
 ## Current Blockers
-- Waiting for remote GitHub Actions rerun confirmation after Trivy strategy update.
+- Waiting for remote GitHub Actions rerun confirmation after the shell-continuation bugfix.
 
 ## Next Concrete Edits
 1. Push current branch and rerun `Security` workflow.
-2. Confirm `trivy-image` passes and that SARIF artifact still uploads.
-3. If remote still fails, capture the generated SARIF and patch only the remaining root cause.
+2. Confirm `trivy-image` command log now visibly contains `--ignore-unfixed`, and that SARIF artifact still uploads.
+3. If remote still fails after that, capture the generated SARIF and patch only the remaining root cause.
 
 ## Constraints Not To Forget
 - Minimal-change CI fix only; do not expand product features.

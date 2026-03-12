@@ -21,6 +21,10 @@ Stabilize and harden the shipped Phase 1 implementation for production use on NA
   - Updated runtime image build to upgrade `setuptools`/`wheel` and remove fixable packaging findings.
   - Updated Trivy gate to include `--ignore-unfixed` while retaining `HIGH/CRITICAL` fail-on-detect for fixable vulnerabilities.
   - Local Trivy gate replay now passes; Docker runtime verification remains healthy.
+- Completed Trivy workflow execution bugfix:
+  - Confirmed latest remote failure could still happen on newest workflow because an inline shell comment was placed inside a backslash-continued Trivy command.
+  - Moved the comment above `docker run`, so `--ignore-unfixed` is now part of the actual executed command on GitHub Actions.
+  - Local YAML syntax validation passed after the workflow edit.
 - Completed security-workflow compatibility hardening round:
   - Updated `.github/workflows/security.yml` with:
     - `push(main)` + `workflow_dispatch` triggers
