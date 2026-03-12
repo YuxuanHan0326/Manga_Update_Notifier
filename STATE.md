@@ -9,6 +9,13 @@
 Stabilize and harden the shipped Phase 1 implementation for production use on NAS.
 
 ## What Is Done In This Iteration
+- Completed security follow-up bugfix round based on new remote logs:
+  - Resolved Python audit baseline issue by bumping backend dependency pin to `fastapi==0.121.3` (patched Starlette path).
+  - Fixed frontend audit toolchain order (`pnpm/action-setup` before `setup-node` pnpm cache usage).
+  - Fixed Trivy container env propagation (`TRIVY_*_REPOSITORY` passed with `-e`) and set vuln-only scanner scope for deterministic security gating.
+  - Updated `README.md` security section with practical failure interpretation notes.
+  - Local workflow syntax sanity check passed; waiting remote rerun confirmation.
+  - Additional local checks passed (`test_checker.py`), and Docker runtime verification passed (`compose up -d --build`, `compose ps`, `/api/health`).
 - Completed security-workflow compatibility hardening round:
   - Updated `.github/workflows/security.yml` with:
     - `push(main)` + `workflow_dispatch` triggers

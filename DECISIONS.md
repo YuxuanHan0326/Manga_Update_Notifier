@@ -420,3 +420,20 @@
 - Impact:
   - Security pipeline becomes easier to rerun and diagnose.
   - Compatibility improves under transient network conditions while preserving strict blocking semantics.
+
+## D-038 Security Follow-up: Patched Starlette Path and pnpm Cache Ordering
+- Date: 2026-03-12
+- Status: Accepted
+- Context: After D-037, new remote logs still showed:
+  - `python-audit` blocked by `starlette 0.48.0` (`CVE-2025-62727`)
+  - `frontend-audit` failed before execution because `setup-node` pnpm cache expected pnpm binary in PATH
+  - Trivy container path needed explicit env pass-through for DB mirror config
+- Decision:
+  - Bump backend dependency baseline to `fastapi==0.121.3` to enable patched Starlette resolution.
+  - Reorder frontend security steps so `pnpm/action-setup` runs before `actions/setup-node` with `cache: pnpm`.
+  - Pass `TRIVY_DB_REPOSITORY`/`TRIVY_JAVA_DB_REPOSITORY` into `docker run` explicitly and keep vulnerability-only scanner scope.
+- Reason: Fix concrete pipeline breakpoints while keeping strict vulnerability blocking behavior.
+- Impact:
+  - `python-audit` can pass once patched dependency graph is resolved.
+  - `frontend-audit` no longer fails at tool bootstrap stage.
+  - Trivy mirror/caching behavior becomes deterministic in container mode.

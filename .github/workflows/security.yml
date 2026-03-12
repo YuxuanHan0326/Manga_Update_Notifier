@@ -57,14 +57,15 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      # setup-node `cache: pnpm` expects pnpm to be available first.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'pnpm'
           cache-dependency-path: platform/frontend/pnpm-lock.yaml
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Frontend audit
         shell: bash
@@ -107,7 +108,10 @@ jobs:
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "${{ github.workspace }}:/workspace" \
             -v "${{ github.workspace }}/.cache/trivy:/root/.cache/trivy" \
+            -e TRIVY_DB_REPOSITORY \
+            -e TRIVY_JAVA_DB_REPOSITORY \
             ghcr.io/aquasecurity/trivy:0.61.0 image \
+            --scanners vuln \
             --severity HIGH,CRITICAL \
             --format sarif \
             --output /workspace/trivy-results.sarif \

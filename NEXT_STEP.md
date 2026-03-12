@@ -4,22 +4,23 @@
 Validate and stabilize the updated GitHub Actions security workflow on remote runners.
 
 ## Progress So Far
-- Implemented compatibility hardening in `.github/workflows/security.yml`:
-  - added `push(main)` and `workflow_dispatch` triggers;
-  - added explicit minimal permissions and concurrency cancellation;
-  - added PR-only dependency-review gate;
-  - added per-job timeout limits;
-  - added retry wrappers for dependency install steps (`pip`/`pnpm`);
-  - added Trivy cache and GHCR-backed Trivy DB/image configuration.
-- Synced README security section to reflect current checks and triggers.
+- New remote failure evidence received:
+  - `python-audit`: blocked by `starlette 0.48.0` (`CVE-2025-62727`, fix `>=0.49.1`)
+  - `frontend-audit`: `setup-node` cache step errors with `Unable to locate executable file: pnpm`
+  - `trivy-image`: scanner still exits non-zero after scan, consistent with unresolved high vulnerability in image deps
+- Applied fixes:
+  - bumped backend baseline to `fastapi==0.121.3` to move Starlette resolution to patched range;
+  - reordered frontend workflow so `pnpm/action-setup` runs before `setup-node` pnpm cache;
+  - passed Trivy DB env vars into container and set `--scanners vuln` for deterministic vuln-only gate;
+  - revalidated workflow syntax (`security.yml syntax ok`).
 
 ## Current Blockers
-- Waiting for remote GitHub Actions rerun evidence after these workflow changes are pushed.
+- Waiting for remote GitHub Actions rerun to confirm all three jobs are green with the new pins/order.
 
 ## Next Concrete Edits
-1. Push current branch and run `Security` workflow via `workflow_dispatch`.
-2. If a specific job still fails, capture the failing step log and apply a narrow fix (do not reduce severity gates).
-3. After remote green, mark `T-064` as DONE and update branch protection docs only if required checks changed.
+1. Push current branch and run `Security` via `workflow_dispatch`.
+2. If any job still fails, capture exact failing step logs and apply narrow follow-up fixes without reducing severity gates.
+3. After remote green, close `T-064` and sync branch-protection required checks if needed.
 
 ## Constraints Not To Forget
 - Minimal-change CI fix only; do not expand product features.

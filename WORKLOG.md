@@ -116,3 +116,22 @@
 - Synced user docs in `README.md` security section with the new workflow behavior.
 - No program-body files changed in this round, so Docker runtime rebuild was skipped per protocol exception.
 - Local workflow syntax sanity check passed via Python YAML parse (security.yml syntax ok).
+
+### 02. Security Failures Follow-up Fix (T-064)
+- Remote logs confirmed three concrete failures:
+  - `python-audit`: `starlette 0.48.0` CVE (`CVE-2025-62727`)
+  - `frontend-audit`: `setup-node` pnpm cache fails before pnpm is available
+  - `trivy-image`: scan exits non-zero after vulnerability detection path
+- Implemented minimal fixes:
+  - `platform/backend/requirements.txt`: bumped to `fastapi==0.121.3` so Starlette can resolve to patched versions.
+  - `.github/workflows/security.yml`:
+    - moved `pnpm/action-setup@v4` before `actions/setup-node@v4` for pnpm cache compatibility;
+    - passed `TRIVY_DB_REPOSITORY` and `TRIVY_JAVA_DB_REPOSITORY` into container via `-e`;
+    - set `--scanners vuln` to align scan scope with vulnerability gate.
+  - `README.md`: updated security section with failure-interpretation notes.
+- Validation:
+  - local YAML sanity parse passed (`security.yml syntax ok`).
+- Docker rebuild skipped per protocol exception (no program-body/runtime code change).
+- Additional local validation after follow-up fixes:
+  - `PYTHONPATH=platform/backend pytest -q platform/tests/unit/test_checker.py` passed (`1 passed`).
+  - Docker runtime verification executed per protocol (`cd platform && docker compose up -d --build`), container is `Up`, and `/api/health` returned `{"status":"ok"}`.

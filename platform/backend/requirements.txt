@@ -1,5 +1,5 @@
-# Upgrade FastAPI to pull secure Starlette range (fixes CVE findings in security workflow).
-fastapi==0.120.0
+# Keep FastAPI on a line that allows patched Starlette (CVE-2025-62727 fix >= 0.49.1).
+fastapi==0.121.3
 uvicorn[standard]==0.34.0
 sqlalchemy==2.0.38
 pydantic-settings==2.8.1

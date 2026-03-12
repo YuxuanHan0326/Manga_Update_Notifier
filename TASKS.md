@@ -17,7 +17,7 @@
 
 | ID | Task | Req | Started | Notes |
 |---|---|---|---|---|
-| T-064 | Harden GitHub Actions security workflow for runner compatibility and stable diagnostics | NFR-005, NFR-002 | 2026-03-12 | Re-check official guidance and adapt security.yml with minimal, robust changes |
+| T-064 | Harden GitHub Actions security workflow for runner compatibility and stable diagnostics | NFR-005, NFR-002 | 2026-03-12 | Applied fixes for Starlette CVE baseline, pnpm cache order, and Trivy container env pass-through; awaiting remote rerun confirmation |
 
 ## BLOCKED
 
