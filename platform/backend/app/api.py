@@ -50,6 +50,7 @@ from .services.subscriptions import (
     update_subscription,
 )
 from .services.summary import run_daily_summary
+from .services.text_normalization import repair_mojibake_text
 from .services.timezone import detect_timezone_from_ip, extract_client_ip
 
 router = APIRouter(prefix="/api")
@@ -125,6 +126,8 @@ def _sub_to_response(row: Subscription) -> SubscriptionResponse:
     last_seen_update_title = meta.get("last_seen_update_title")
     if not isinstance(last_seen_update_title, str):
         last_seen_update_title = None
+    else:
+        last_seen_update_title = repair_mojibake_text(last_seen_update_title)
     last_seen_update_at = meta.get("last_seen_update_at")
     if not isinstance(last_seen_update_at, str):
         last_seen_update_at = None
@@ -132,7 +135,7 @@ def _sub_to_response(row: Subscription) -> SubscriptionResponse:
         id=row.id,
         source_code=row.source_code,
         item_id=row.item_id,
-        item_title=row.item_title,
+        item_title=repair_mojibake_text(row.item_title),
         group_word=meta.get("group_word", "default"),
         status=row.status,
         last_seen_update_id=row.last_seen_update_id,
@@ -375,11 +378,12 @@ def post_debug_simulate_update(sub_id: int, db: Session = Depends(get_db)) -> di
     now = datetime.now(UTC)
     debug_suffix = uuid4().hex[:8]
     update_id = f"debug-{now.strftime('%Y%m%d%H%M%S')}-{debug_suffix}"
+    normalized_item_title = repair_mojibake_text(row.item_title)
     evt = UpdateEvent(
         source_code=row.source_code,
         subscription_id=row.id,
         update_id=update_id,
-        update_title=f"[DEBUG] simulated update for {row.item_title}",
+        update_title=f"[DEBUG] simulated update for {normalized_item_title}",
         update_url="",
         detected_at=now,
         dedupe_key=f"debug:{row.source_code}:{row.id}:{update_id}",
@@ -407,16 +411,17 @@ def post_debug_notify_test(sub_id: int, db: Session = Depends(get_db)) -> dict:
     debug_update_id = f"debug-notify-{uuid4().hex[:8]}"
     debug_dedupe_key = f"debug-notify:{row.source_code}:{row.id}"
     source_item_url = build_source_item_url(row.source_code, row.item_id, cfg)
+    normalized_item_title = repair_mojibake_text(row.item_title)
     event_payload = [
         build_notification_event(
             source_code=row.source_code,
             subscription_id=row.id,
             item_id=row.item_id,
-            item_title=row.item_title,
+            item_title=normalized_item_title,
             cover=str(row_meta.get("cover") or ""),
             source_item_url=source_item_url,
             update_id=debug_update_id,
-            update_title=f"[DEBUG] notify test for {row.item_title}",
+            update_title=f"[DEBUG] notify test for {normalized_item_title}",
             update_url=cfg["app_base_url"],
             detected_at=now,
             dedupe_key=debug_dedupe_key,
@@ -563,7 +568,7 @@ def get_events(
             source_code=r.source_code,
             subscription_id=r.subscription_id,
             update_id=r.update_id,
-            update_title=r.update_title,
+            update_title=repair_mojibake_text(r.update_title),
             update_url=r.update_url,
             detected_at=r.detected_at,
             summarized_at=r.summarized_at,

@@ -1,25 +1,28 @@
 # Next Step
 
 ## Current Task
-Collect user acceptance feedback for text-only RSS output.
+Validate and stabilize the updated GitHub Actions security workflow on remote runners.
 
 ## Progress So Far
-- Implemented and verified:
-  - RSS feed no longer emits image fields (`media:thumbnail` / `enclosure`) or media namespace.
-  - RSS still keeps reader-friendly text (`title`, `description`, `content:encoded`).
-  - Backend checks passed (`ruff`, `pytest 48 passed`).
-  - Docker runtime verification passed (`compose up -d --build`, `compose ps`, `/api/health`).
-  - Runtime RSS smoke check passed (`NO_IMAGE_TAG`).
+- Implemented compatibility hardening in `.github/workflows/security.yml`:
+  - added `push(main)` and `workflow_dispatch` triggers;
+  - added explicit minimal permissions and concurrency cancellation;
+  - added PR-only dependency-review gate;
+  - added per-job timeout limits;
+  - added retry wrappers for dependency install steps (`pip`/`pnpm`);
+  - added Trivy cache and GHCR-backed Trivy DB/image configuration.
+- Synced README security section to reflect current checks and triggers.
 
 ## Current Blockers
-- No blocker.
+- Waiting for remote GitHub Actions rerun evidence after these workflow changes are pushed.
 
 ## Next Concrete Edits
-1. Ask user to verify RSS reader display with text-only items.
-2. If user wants further compact wording in `description`/`content:encoded`, refine text template only.
-3. Keep ledgers synchronized after acceptance.
+1. Push current branch and run `Security` workflow via `workflow_dispatch`.
+2. If a specific job still fails, capture the failing step log and apply a narrow fix (do not reduce severity gates).
+3. After remote green, mark `T-064` as DONE and update branch protection docs only if required checks changed.
 
 ## Constraints Not To Forget
-- Minimal-change bugfix only; no feature expansion.
-- Do not touch backend behavior.
-- Keep required proper nouns in English.
+- Minimal-change CI fix only; do not expand product features.
+- All changes must map to `NFR-005` and `NFR-002`.
+- Keep vulnerability gate semantics explicit (no silent downgrade to pass).
+- Update ledger/docs per protocol.

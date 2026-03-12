@@ -19,6 +19,7 @@
 - 设置支持：`Timezone Auto (by IP)` 自动时区（失败时回退默认时区）+ 手动时区下拉选择
 - 排程设置支持：友好模式（每几小时检查、每日推送时间）+ Advanced Cron 兼容模式
 - 订阅列表支持：显示上次获取时间与上次最新话标题（Last Seen）
+- 历史数据中若存在 UTF-8/Latin-1 混淆导致的中文乱码，API 与通知输出会自动做安全修复显示
 - 订阅列表支持：对历史“无封面”订阅进行读取时自动回填（若源站可提取到封面）
 - 订阅封面加载策略：优先通过应用内封面代理加载，降低外链防盗链/跨域策略导致的渲染失败
   - KXO 封面 CDN（`mxomo`）已增加兼容请求策略，避免代理链路下的 403 拒绝
@@ -153,10 +154,20 @@ curl -X POST http://localhost:8000/api/subscriptions/manual-kxo `
 
 ## 安全检查（GitHub Actions）
 - 工作流：`.github/workflows/security.yml`
-- 当前包含三类检查：
-  - `python-audit`：`pip-audit` 扫描后端依赖漏洞
-  - `frontend-audit`：`pnpm audit --prod` 扫描前端生产依赖漏洞
-  - `trivy-image`：构建镜像后使用 Trivy 扫描镜像 `HIGH/CRITICAL` 漏洞
+- 触发方式：
+  - `pull_request`（`main`）
+  - `push`（`main`）
+  - `schedule`（每天 02:00 UTC）
+  - `workflow_dispatch`（手动触发）
+- 当前包含四类检查：
+  - `dependency-review`：PR 增量依赖门禁（`high` 及以上阻断）
+  - `python-audit`：`pip-audit` 扫描后端依赖漏洞（保留 `--strict`）
+  - `frontend-audit`：`pnpm audit --prod --audit-level high` 扫描前端生产依赖漏洞
+  - `trivy-image`：构建镜像后使用 Trivy 扫描镜像 `HIGH/CRITICAL` 漏洞并上传 SARIF artifact
+- 稳定性增强（不降低安全门槛）：
+  - 安装依赖步骤增加短重试，降低 runner 临时网络抖动导致的误失败
+  - Trivy 改用 GHCR 镜像与缓存目录，减少拉取限流/冷启动抖动
+  - 所有安全 job 增加 `timeout`，避免挂起占用 runner
 
 ## 核心配置（环境变量）
 通过 `platform/docker-compose.yml` 传入：

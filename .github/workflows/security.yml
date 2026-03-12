@@ -3,12 +3,37 @@ name: Security
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
   schedule:
     - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  dependency-review:
+    # Fast PR gate for newly introduced vulnerable dependencies.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
   python-audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -16,46 +41,78 @@ jobs:
           python-version: '3.11'
 
       - name: Python audit
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          pip install pip-audit
+          set -euo pipefail
+          # Retry install to reduce false negatives from transient network errors.
+          for i in 1 2 3; do
+            python -m pip install --upgrade pip pip-audit && break
+            if [ "$i" -eq 3 ]; then exit 1; fi
+            sleep $((i * 5))
+          done
           pip-audit -r platform/backend/requirements.txt --strict
 
   frontend-audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: platform/frontend/pnpm-lock.yaml
       - uses: pnpm/action-setup@v4
         with:
           version: 9
 
       - name: Frontend audit
+        shell: bash
         run: |
+          set -euo pipefail
           cd platform/frontend
-          pnpm install --no-frozen-lockfile
+          # Retry install to reduce transient registry-error failures.
+          for i in 1 2 3; do
+            pnpm install --no-frozen-lockfile && break
+            if [ "$i" -eq 3 ]; then exit 1; fi
+            sleep $((i * 5))
+          done
           pnpm audit --prod --audit-level high
 
   trivy-image:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - name: Restore Trivy cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ github.ref_name }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
       - name: Build image
-        run: docker build -t local/manga-update-platform:scan platform
+        run: docker build --pull -t local/manga-update-platform:scan platform
 
       - name: Trivy scan
-        # Run Trivy via container to avoid setup-trivy binary install failures.
+        shell: bash
+        env:
+          # Prefer GHCR DB mirrors to reduce Docker Hub pull-limit instability.
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
         run: |
+          set -euo pipefail
+          mkdir -p .cache/trivy
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "${{ github.workspace }}:/workspace" \
-            aquasec/trivy:0.61.0 image \
+            -v "${{ github.workspace }}/.cache/trivy:/root/.cache/trivy" \
+            ghcr.io/aquasecurity/trivy:0.61.0 image \
             --severity HIGH,CRITICAL \
             --format sarif \
             --output /workspace/trivy-results.sarif \
             --exit-code 1 \
+            --timeout 10m \
             local/manga-update-platform:scan
 
       - name: Upload Trivy result artifact

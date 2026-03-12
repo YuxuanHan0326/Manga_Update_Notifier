@@ -1,7 +1,7 @@
 # State
 
 ## Snapshot
-- Date: 2026-03-11
+- Date: 2026-03-12
 - Phase: Phase 1 MVP Implemented
 - Overall Status: IN_PROGRESS
 
@@ -9,6 +9,22 @@
 Stabilize and harden the shipped Phase 1 implementation for production use on NAS.
 
 ## What Is Done In This Iteration
+- Completed security-workflow compatibility hardening round:
+  - Updated `.github/workflows/security.yml` with:
+    - `push(main)` + `workflow_dispatch` triggers
+    - explicit minimal permissions and concurrency control
+    - PR-only dependency review gate
+    - timeout guards and install retry wrappers for `pip/pnpm`
+    - Trivy cache + GHCR-backed Trivy image/DB configuration
+  - Preserved strict vulnerability gates (`pip-audit --strict`, frontend high-level audit, Trivy HIGH/CRITICAL fail-on-detect).
+  - Synced `README.md` security section to match current workflow behavior.
+  - No program-body changes in this round; Docker rebuild skipped by protocol exception.
+- Completed residual mojibake-repair round for historical text:
+  - Added safe normalization helper for UTF-8/Latin-1 mixed garbled strings.
+  - Applied repair on subscription/event API output fields and notification payload title fields.
+  - Updated debug event generation paths to avoid creating new garbled titles from old corrupted subscription names.
+  - Cleaned remaining visible garbled literals in integration/unit tests.
+  - Validation passed (`ruff`, `pytest 52 passed`) and Docker runtime verification passed (`docker compose up -d --build`, `docker compose ps`, `/api/health`).
 - Completed RSS text-only output adjustment round:
   - Removed RSS cover image fields (`media:thumbnail`, `enclosure`) and media namespace.
   - Kept text-first reader-friendly output (`title`, `description`, `content:encoded`).
@@ -211,9 +227,10 @@ Stabilize and harden the shipped Phase 1 implementation for production use on NA
   - Synced docs and requirements/brief after approved scope change; full validation and Docker runtime checks passed.
 
 ## Next Step
-1. Collect user acceptance feedback for text-only RSS output and readability in target reader.
-2. Continue NAS-side real-site smoke checks for KXO manual URL/ID subscription + update-detection path.
-3. Apply branch protection/ruleset in GitHub UI using `docs/branch-protection.md` and verify required checks are enforced.
+1. Push current branch and rerun `Security` workflow via `workflow_dispatch`, then verify `python-audit` / `frontend-audit` / `trivy-image` stability.
+2. If any security job still fails, capture exact failing step logs and apply a narrow compatibility fix without lowering severity gates.
+3. Continue NAS-side real-site smoke checks for KXO manual URL/ID subscription + update-detection path.
+4. Apply branch protection/ruleset in GitHub UI using `docs/branch-protection.md` and verify required checks are enforced.
 
 ## Active Risks
 - R-001: Source anti-bot/rate-limit behavior may still impact long-term stability.

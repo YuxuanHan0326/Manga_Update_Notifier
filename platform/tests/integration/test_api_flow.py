@@ -7,6 +7,10 @@ from app.main import app
 from fastapi.testclient import TestClient
 
 
+def _garbled_utf8(text: str) -> str:
+    return text.encode("utf-8").decode("latin-1")
+
+
 class FakeAdapter:
     code = "testsource"
     name = "Test Source"
@@ -98,7 +102,7 @@ class FakeKxoAdapter:
             "item_title": "KXO Demo",
             "cover": "https://img/cover.jpg",
             "latest_update_time": "2026-03-10",
-            "latest_chapters": ["ÃƒÂ§Ã‚Â¬Ã‚Â¬2ÃƒÂ¥Ã‚ÂÃ‚Â·"],
+            "latest_chapters": ["第2卷"],
         }
 
     def search(self, query: str, page: int):
@@ -109,8 +113,8 @@ class FakeKxoAdapter:
     def list_updates(self, item_id: str, item_meta: dict | None = None):
         _ = item_meta
         return [
-            AdapterUpdate(update_id="kxo:1", title="ÃƒÂ§Ã‚Â¬Ã‚Â¬1ÃƒÂ¥Ã‚ÂÃ‚Â·", url="https://kzo.moe/c/20001.htm"),
-            AdapterUpdate(update_id="kxo:2", title="ÃƒÂ§Ã‚Â¬Ã‚Â¬2ÃƒÂ¥Ã‚ÂÃ‚Â·", url="https://kzo.moe/c/20001.htm"),
+            AdapterUpdate(update_id="kxo:1", title="第1卷", url="https://kzo.moe/c/20001.htm"),
+            AdapterUpdate(update_id="kxo:2", title="第2卷", url="https://kzo.moe/c/20001.htm"),
         ]
 
     def healthcheck(self) -> bool:
@@ -255,7 +259,7 @@ def test_kxo_manual_subscription_endpoint_supports_url_ref():
     assert body["item_id"] == "20001"
     assert body["item_title"] == "KXO Demo"
     assert body["item_meta"]["cover"] == "https://img/cover.jpg"
-    assert body["last_seen_update_title"] == "ÃƒÂ§Ã‚Â¬Ã‚Â¬2ÃƒÂ¥Ã‚ÂÃ‚Â·"
+    assert body["last_seen_update_title"] == "第2卷"
     assert body["last_seen_update_at"] == "2026-03-10"
 
 
@@ -279,14 +283,14 @@ def test_subscription_create_prefills_last_seen_from_search_meta_and_cover():
             "group_word": "default",
             "cover": "https://img/demo.jpg",
             "latest_update_time": "2026-03-01",
-            "latest_chapters": ["ÃƒÂ§Ã‚Â¬Ã‚Â¬12ÃƒÂ¨Ã‚Â¯Ã‚Â"],
+            "latest_chapters": ["第12话"],
         },
     }
     out = client.post("/api/subscriptions", json=payload)
     assert out.status_code == 200
     body = out.json()
     assert body["item_meta"]["cover"] == "https://img/demo.jpg"
-    assert body["last_seen_update_title"] == "ÃƒÂ§Ã‚Â¬Ã‚Â¬12ÃƒÂ¨Ã‚Â¯Ã‚Â"
+    assert body["last_seen_update_title"] == "第12话"
     assert body["last_seen_update_at"] == "2026-03-01"
 
 
@@ -441,6 +445,39 @@ def test_rss_copymanga_links_use_official_domain():
     xml = rss.text
     assert "https://www.mangacopy.com/comic/haizeiwang" in xml
     assert "copymanga.site" not in xml
+
+
+def test_api_repairs_mojibake_titles_for_subscriptions_and_events():
+    register_adapter(FakeAdapter())
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/subscriptions",
+        json={
+            "source_code": "testsource",
+            "item_id": "comic-1",
+            "item_title": _garbled_utf8("海贼王"),
+            "group_word": "default",
+            "item_meta": {
+                "group_word": "default",
+                "last_seen_update_title": _garbled_utf8("第1176话"),
+            },
+        },
+    )
+    assert created.status_code == 200
+    body = created.json()
+    assert body["item_title"] == "海贼王"
+    assert body["last_seen_update_title"] == "第1176话"
+    sub_id = body["id"]
+
+    simulated = client.post(f"/api/subscriptions/{sub_id}/debug/simulate-update")
+    assert simulated.status_code == 200
+
+    events = client.get("/api/events", params={"status": "all", "include_debug": True})
+    assert events.status_code == 200
+    titles = [item["update_title"] for item in events.json()]
+    assert any("海贼王" in title for title in titles)
+    assert all(_garbled_utf8("海贼王") not in title for title in titles)
 
 
 def test_unsubscribe_default_removes_pending_events_only():

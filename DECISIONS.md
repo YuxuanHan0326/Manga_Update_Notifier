@@ -387,3 +387,36 @@
 - Impact:
   - RSS feed is now text-only by design.
   - This supersedes the image-field part of `D-032`.
+
+## D-036 Safe Mojibake Repair on Output Paths
+- Date: 2026-03-11
+- Status: Accepted
+- Context: Historical rows created during earlier encoding-bug windows can contain UTF-8-as-Latin-1 mojibake in titles (subscription title, last-seen title, event title), leading to residual garbled Chinese in UI/API/notifications.
+- Decision:
+  - Add a safe text-normalization helper and apply it on output paths:
+    - subscription API response fields
+    - event API response titles
+    - notification payload title fields (Webhook/RSS source data)
+  - Keep storage schema unchanged (no destructive migration in this round).
+- Reason: Repair user-visible corruption immediately with minimal risk and no schema/data migration downtime.
+- Impact:
+  - Existing garbled historical data is rendered as readable Chinese in current APIs and notifications.
+  - Normal text remains unchanged via heuristic guardrails in normalization logic.
+
+## D-037 Security Workflow Compatibility Hardening (No Gate Downgrade)
+- Date: 2026-03-12
+- Status: Accepted
+- Context: Security workflow remained flaky on hosted runners due transient network/tooling factors and uneven diagnostics, while security gates must stay strict.
+- Decision:
+  - Keep vulnerability fail gates intact (`pip-audit --strict`, `pnpm audit --audit-level high`, Trivy `HIGH/CRITICAL` with `exit-code 1`).
+  - Add workflow-level hardening:
+    - explicit minimal token permissions (`contents: read`) and PR-only dependency-review gate (`actions/dependency-review-action@v4`)
+    - workflow concurrency cancellation for superseded runs
+    - job timeouts and deterministic shell settings
+    - retry wrappers around dependency-install steps
+    - Trivy DB cache and GHCR-backed Trivy/DB sources to reduce registry pull instability
+  - Add `workflow_dispatch` so failures can be re-validated quickly after fixes.
+- Reason: Reduce false failures from runner/environment variance without weakening vulnerability blocking policy.
+- Impact:
+  - Security pipeline becomes easier to rerun and diagnose.
+  - Compatibility improves under transient network conditions while preserving strict blocking semantics.

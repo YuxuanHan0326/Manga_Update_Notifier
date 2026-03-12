@@ -83,3 +83,36 @@
   - 后端检查通过：`ruff`、`pytest 48 passed`。
   - Docker 验证通过：`compose up -d --build`、`compose ps`、`/api/health`。
   - 运行态 RSS 校验：未检测到 `media:thumbnail` / `enclosure` / `xmlns:media`。
+
+### 07. 残留中文乱码修复（T-062）
+- 用户反馈：仍有部分中文项存在乱码（历史数据路径）。
+- 根因定位：
+  - 并非当前页面文案问题，而是历史数据中存在 UTF-8 字节被按 Latin-1 存储/展示的残留文本。
+  - 影响路径：订阅标题、Last Seen 标题、事件标题，以及基于这些字段构建的通知 payload。
+- 实施方案（最小改动）：
+  - 新增 `text_normalization.py`，提供安全修复函数 `repair_mojibake_text`。
+  - 输出路径接入修复：
+    - `api.py`：`/api/subscriptions`、`/api/events` 响应字段；
+    - debug 事件生成文案（simulate/notify test）；
+    - `notification_payloads.py`：Webhook/RSS 共用事件结构中的标题字段。
+  - 清理测试代码中的可见乱码字面量，改为安全构造函数，避免仓库内继续残留乱码文本。
+- 验证：
+  - 代码质量与测试：`ruff` 通过，`pytest 52 passed`。
+  - Docker 运行验证：`compose up -d --build`、`compose ps`、`/api/health` 通过。
+  - 额外运行态校验：构造历史乱码输入后，API 返回标题已恢复为正常中文。
+## 2026-03-12
+
+### 01. Security Workflow Compatibility Hardening (T-064)
+- User reported `security` workflow still failing on GitHub Actions and requested standards-aligned adaptation.
+- Rebuilt context from memory docs and inspected current workflow baseline before edits.
+- Updated `.github/workflows/security.yml` with minimal but targeted hardening:
+  - added `push(main)` and `workflow_dispatch` triggers;
+  - added top-level minimal permissions and concurrency control;
+  - added PR-only `dependency-review` gate;
+  - added per-job timeout limits;
+  - added retry wrappers for `pip/pnpm` install steps;
+  - added Trivy cache + GHCR-backed Trivy DB/image usage and explicit scan timeout.
+- Kept strict security gates unchanged (`high/critical` blocking behavior retained).
+- Synced user docs in `README.md` security section with the new workflow behavior.
+- No program-body files changed in this round, so Docker runtime rebuild was skipped per protocol exception.
+- Local workflow syntax sanity check passed via Python YAML parse (security.yml syntax ok).

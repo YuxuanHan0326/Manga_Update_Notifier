@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from ..models import Subscription, UpdateEvent
+from .text_normalization import repair_mojibake_text
 
 _COPYMANGA_OFFICIAL_HOST = "www.mangacopy.com"
 _COPYMANGA_LEGACY_HOSTS = {
@@ -89,6 +90,9 @@ def build_notification_event(
         normalized_source_item_url = _normalize_copymanga_url(source_item_url)
         normalized_update_url = _normalize_copymanga_url(normalized_update_url)
 
+    normalized_item_title = repair_mojibake_text(item_title)
+    normalized_update_title = repair_mojibake_text(update_title)
+
     # Keep nested event structure explicit for downstream n8n/email templates.
     return {
         "id": None,
@@ -96,13 +100,13 @@ def build_notification_event(
         "subscription_id": subscription_id,
         "subscription": {
             "item_id": item_id,
-            "item_title": item_title,
+            "item_title": normalized_item_title,
             "cover": cover,
             "source_item_url": normalized_source_item_url,
         },
         "update": {
             "update_id": update_id,
-            "update_title": update_title,
+            "update_title": normalized_update_title,
             "update_url": normalized_update_url,
             "detected_at": detected_at_utc.isoformat(),
             "detected_at_local": detected_at_local.isoformat(),

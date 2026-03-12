@@ -17,7 +17,7 @@
 
 | ID | Task | Req | Started | Notes |
 |---|---|---|---|---|
-| T-061 | Collect user acceptance feedback for text-only RSS output | FR-006, FR-007 | 2026-03-11 | Verify reader side no longer expects/renders RSS cover images and text content remains readable |
+| T-064 | Harden GitHub Actions security workflow for runner compatibility and stable diagnostics | NFR-005, NFR-002 | 2026-03-12 | Re-check official guidance and adapt security.yml with minimal, robust changes |
 
 ## BLOCKED
 
@@ -29,6 +29,9 @@
 
 | ID | Task | Req | Completed | Notes |
 |---|---|---|---|---|
+| T-063 | Collect user acceptance feedback for residual mojibake repair | FR-003, FR-006 | 2026-03-12 | Superseded by higher-priority CI/security stabilization round; acceptance follow-up deferred |
+| T-062 | Fix residual Chinese mojibake in stored titles/events rendering path | FR-003, FR-006, NFR-001 | 2026-03-11 | Added safe mojibake repair helper and applied to subscription/event/notification output paths; cleaned garbled literals in tests; backend checks (`ruff`, `pytest 52 passed`) and Docker runtime verification passed |
+| T-061 | Collect user acceptance feedback for text-only RSS output | FR-006, FR-007 | 2026-03-11 | User reported new residual mojibake issue before standalone acceptance closure; task superseded by bugfix round |
 | T-060 | Remove RSS cover-image output and keep text-only RSS entries | FR-006, FR-007 | 2026-03-11 | Removed RSS image fields (`media:thumbnail`/`enclosure`) and media namespace; updated integration test and docs; backend checks + Docker health verification passed |
 | T-059 | Collect user acceptance feedback for subscribe success hint and new title text | FR-003, FR-004 | 2026-03-11 | User moved to next RSS-format change before standalone acceptance closure; task superseded by new implementation round |
 | T-058 | Add explicit subscribe success feedback and rename main title to `Manga Update Notifier` | FR-003, FR-004 | 2026-03-11 | Updated `main.js` title and subscribe success alert feedback; frontend lint/test/build + Docker runtime health verification passed |
