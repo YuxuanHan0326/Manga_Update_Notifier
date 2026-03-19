@@ -1,7 +1,7 @@
 # State
 
 ## Snapshot
-- Date: 2026-03-12
+- Date: 2026-03-19
 - Phase: Phase 1 MVP Implemented
 - Overall Status: IN_PROGRESS
 
@@ -9,6 +9,25 @@
 Stabilize and harden the shipped Phase 1 implementation for production use on NAS.
 
 ## What Is Done In This Iteration
+- Completed CopyManga request-fingerprint alignment round (T-067):
+  - Centralized strict API header contract in adapter (`COPY/3.0.0` + `version/platform/webp/region` + `Accept`).
+  - Unified API call path (`search`, `list_updates`, `healthcheck`) through one adapter request wrapper.
+  - Aligned chapter API request param to `platform=1` to match reference behavior.
+  - Added bounded short-timeout retry wrapper for transient `httpx` failures (reference-like behavior).
+  - Added regression tests for:
+    - list-updates header/param contract,
+    - search transient-timeout retry success path,
+    - healthcheck header contract.
+  - Validation passed: `ruff` + unit tests (`39 passed`) + Docker rebuild/start + `/api/health`.
+- Completed CopyManga update-miss bugfix round (manual check showed no updates while source already advanced):
+  - Live diagnosis on user runtime confirmed all CopyManga subscriptions had `last_seen_update_id = null`.
+  - Root cause: chapter API returned risk-control payload (`code=210`) so adapter produced empty chapter list and checker could never seed baseline marker.
+  - Fix:
+    - adapter now falls back to webpage latest-chapter meta when chapter API is blocked/empty;
+    - chapter ordering switched to numeric-first sort to avoid `100+` lexicographic ordering errors.
+    - checker now emits one catch-up event when `last_seen_update_id` is missing but saved last title is older than current latest.
+  - Added regression tests for blocked-API fallback, numeric sorting, and baseline-seed then next-run discovery behavior.
+  - Validation passed: `ruff`, `pytest 59 passed`, Docker rebuild/start + `/api/health`.
 - Completed CopyManga cover-render bugfix round (reported sample: `yumaoxianglinshangbushilian`):
   - Root cause 1: CopyManga page may expose cover only via `<img data-src/src .../cover/...>`; old parser only matched `og:image`/JSON `cover`.
   - Root cause 2: Some CopyManga CDN endpoints return image bytes with `content-type: binary/octet-stream`; old cover-proxy rejected non-`image/*`.
@@ -257,9 +276,9 @@ Stabilize and harden the shipped Phase 1 implementation for production use on NA
   - Synced docs and requirements/brief after approved scope change; full validation and Docker runtime checks passed.
 
 ## Next Step
-1. Ask user to hard-refresh browser and verify previously failing CopyManga covers now render in Search and Subscriptions.
-2. If any cover still fails, collect the exact cover URL and `/api/cover-proxy` response detail for targeted fallback patch.
-3. Continue periodic CI/security workflow monitoring as a parallel maintenance stream.
+1. User redeploys latest image to NAS instance (`192.168.100.1:8000`).
+2. Trigger `/api/jobs/run-check` once and confirm affected subscription no longer stays at `last_seen_update_id = null`.
+3. Verify catch-up behavior: legacy stale title (e.g. 108) should emit one event for current latest (109), then subsequent runs remain idempotent.
 
 ## Active Risks
 - R-001: Source anti-bot/rate-limit behavior may still impact long-term stability.

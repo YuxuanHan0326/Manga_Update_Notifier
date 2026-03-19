@@ -43,6 +43,26 @@ def run_update_check(db: Session) -> dict[str, int]:
             seen_at = datetime.now(UTC).isoformat()
             if row.last_seen_update_id is None:
                 # First successful fetch seeds baseline and avoids backfilling historical chapters.
+                # If historical metadata already has a previous latest-title snapshot, and the
+                # current latest title changed, emit one catch-up event for this latest chapter.
+                previous_title = str(meta.get("last_seen_update_title") or "").strip()
+                if previous_title and previous_title != latest_title:
+                    dedupe_key = f"{row.source_code}:{row.id}:{latest_id}"
+                    evt = UpdateEvent(
+                        source_code=row.source_code,
+                        subscription_id=row.id,
+                        update_id=latest_id,
+                        update_title=latest_title,
+                        update_url=updates[-1].url,
+                        detected_at=datetime.now(UTC),
+                        dedupe_key=dedupe_key,
+                    )
+                    db.add(evt)
+                    try:
+                        db.commit()
+                        discovered += 1
+                    except IntegrityError:
+                        db.rollback()
                 row.last_seen_update_id = latest_id
                 meta["last_seen_update_title"] = latest_title
                 meta["last_seen_update_at"] = seen_at

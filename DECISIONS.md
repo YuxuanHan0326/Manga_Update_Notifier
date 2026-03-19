@@ -451,3 +451,22 @@
 - Impact:
   - Fixable HIGH/CRITICAL findings still fail CI.
   - No-fix vulnerabilities are visible in reports but no longer hard-block merges/releases.
+
+## D-040 CopyManga Request Fingerprint Strict Alignment
+- Date: 2026-03-19
+- Status: Accepted
+- Context: Robustness analysis against reference downloader showed stable availability depends on consistent API request fingerprint, not only fallback parsing.
+- Decision:
+  - Centralize and enforce CopyManga API header contract across all adapter API calls:
+    - `User-Agent: COPY/3.0.0`
+    - `Accept: application/json`
+    - `version: 2025.08.15`
+    - `platform: 1`
+    - `webp: 1`
+    - `region: 1`
+  - Add bounded short-timeout retry wrapper for transient adapter API failures (reference-like behavior).
+  - Apply same contract to healthcheck path to avoid false-positive availability status from inconsistent request shape.
+- Reason: Reduce anti-bot sensitivity and transient network noise while preserving minimal-scope adapter-only changes.
+- Impact:
+  - CopyManga adapter request behavior is now deterministic and test-covered for header consistency and retry path.
+  - No change to business semantics of notifications/subscriptions.

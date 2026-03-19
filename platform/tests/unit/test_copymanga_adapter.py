@@ -41,6 +41,21 @@ class _MockWebResponse:
         return None
 
 
+class _MockChaptersResponse:
+    headers = {"content-type": "application/json"}
+
+    def __init__(self, payload: dict, status_code: int = 200) -> None:
+        self._payload = payload
+        self.status_code = status_code
+        self.text = "{}"
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict:
+        return self._payload
+
+
 def test_search_uses_required_headers_for_copymanga_api():
     adapter = CopyMangaAdapter()
     adapter._enrich_search_items = lambda items: None  # type: ignore[method-assign]
@@ -253,3 +268,101 @@ def test_fetch_web_meta_marks_fetch_failed_when_request_errors():
     meta = adapter._fetch_web_meta("comic-2")
 
     assert meta["meta_fetch_status"] == "fetch_failed"
+
+
+def test_list_updates_uses_numeric_sort_for_string_index():
+    adapter = CopyMangaAdapter()
+
+    def _fake_get(url: str, params: dict, headers: dict):
+        assert "comic-sort/group/default/chapters" in url
+        assert headers["User-Agent"] == "COPY/3.0.0"
+        assert headers["Accept"] == "application/json"
+        assert headers["platform"] == "1"
+        assert headers["version"] == "2025.08.15"
+        assert headers["webp"] == "1"
+        assert headers["region"] == "1"
+        assert params["platform"] == 1
+        return _MockChaptersResponse(
+            {
+                "code": 200,
+                "results": {
+                    "list": [
+                        {"uuid": "c9", "name": "第9话", "index": "9"},
+                        {"uuid": "c10", "name": "第10话", "index": "10"},
+                        {"uuid": "c2", "name": "第2话", "index": "2"},
+                    ]
+                },
+            }
+        )
+
+    adapter.client.get = _fake_get  # type: ignore[method-assign]
+    updates = adapter.list_updates("comic-sort", {"group_word": "default"})
+
+    assert [u.update_id for u in updates] == ["c2", "c9", "c10"]
+
+
+def test_list_updates_falls_back_to_web_meta_when_api_blocked():
+    adapter = CopyMangaAdapter()
+
+    def _fake_get(url: str, params: dict, headers: dict):
+        _ = (url, params, headers)
+        return _MockChaptersResponse(
+            {
+                "code": 210,
+                "message": "blocked",
+                "results": {"detail": "risk-control"},
+            },
+            status_code=210,
+        )
+
+    adapter.client.get = _fake_get  # type: ignore[method-assign]
+    adapter._fetch_web_meta = lambda item_id: {  # type: ignore[method-assign]
+        "latest_update_time": "2026-03-19",
+        "latest_chapters": ["第109话"],
+    }
+
+    updates = adapter.list_updates("wueyxingxuanlv", {"group_word": "default"})
+
+    assert len(updates) == 1
+    assert updates[0].title == "第109话"
+    assert updates[0].update_id.startswith("fallback-")
+
+def test_search_retries_on_transient_http_error():
+    adapter = CopyMangaAdapter()
+    adapter._enrich_search_items = lambda items: None  # type: ignore[method-assign]
+    adapter._api_retry_total_seconds = 0.3
+    adapter._api_retry_base_delay_seconds = 0.0
+    calls = 0
+
+    def _fake_get(url: str, params: dict, headers: dict):
+        _ = (url, params, headers)
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise httpx.ReadTimeout("transient timeout")
+        return _MockResponse()
+
+    adapter.client.get = _fake_get  # type: ignore[method-assign]
+    out = adapter.search("demo", 1)
+
+    assert calls == 2
+    assert out.total == 1
+
+
+def test_healthcheck_uses_required_headers():
+    adapter = CopyMangaAdapter()
+
+    def _fake_get(url: str, params: dict, headers: dict):
+        assert url.endswith("/api/v3/search/comic")
+        assert params["q"] == "a"
+        assert params["platform"] == 1
+        assert headers["User-Agent"] == "COPY/3.0.0"
+        assert headers["Accept"] == "application/json"
+        assert headers["platform"] == "1"
+        assert headers["version"] == "2025.08.15"
+        assert headers["webp"] == "1"
+        assert headers["region"] == "1"
+        return _MockResponse()
+
+    adapter.client.get = _fake_get  # type: ignore[method-assign]
+    assert adapter.healthcheck() is True

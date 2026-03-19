@@ -1,11 +1,13 @@
 ﻿from __future__ import annotations
 
+import hashlib
 import logging
+import random
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from html import unescape
 from threading import Lock
-from time import monotonic
+from time import monotonic, sleep
 
 import httpx
 
@@ -23,23 +25,30 @@ log = logging.getLogger(__name__)
 class CopyMangaAdapter:
     code = "copymanga"
     name = "CopyManga"
+    _OFFICIAL_API_HEADERS: dict[str, str] = {
+        "User-Agent": "COPY/3.0.0",
+        "Accept": "application/json",
+        "version": "2025.08.15",
+        "platform": "1",
+        "webp": "1",
+        "region": "1",
+    }
 
     def __init__(self) -> None:
-        self.client = httpx.Client(timeout=15)
+        # Keep API transport behavior close to the reference Copy client:
+        # short request timeout with bounded retry window.
+        self.client = httpx.Client(timeout=3)
+        self._api_retry_total_seconds = 5.0
+        self._api_retry_max_attempts = 4
+        self._api_retry_base_delay_seconds = 1.0
         # Short TTL cache avoids repeated HTML scraping during paged search.
         self._web_meta_cache_ttl_seconds = 300.0
         self._web_meta_cache: dict[str, tuple[float, dict]] = {}
         self._web_meta_cache_lock = Lock()
 
     def _headers(self) -> dict[str, str]:
-        return {
-            "User-Agent": "COPY/3.0.0",
-            "Accept": "application/json",
-            "version": "2025.08.15",
-            "platform": "1",
-            "webp": "1",
-            "region": "1",
-        }
+        # Return a copy so per-call mutations in tests/callers cannot leak globally.
+        return dict(self._OFFICIAL_API_HEADERS)
 
     @staticmethod
     def _web_headers() -> dict[str, str]:
@@ -310,6 +319,67 @@ class CopyMangaAdapter:
                 item.meta = {**(item.meta or {}), **(meta or {})}
 
     @staticmethod
+    def _chapter_sort_key(chapter: dict) -> tuple[int, float | str]:
+        raw_index = chapter.get("index", 0)
+        if isinstance(raw_index, int | float):
+            return (0, float(raw_index))
+        if isinstance(raw_index, str):
+            text = raw_index.strip()
+            if text:
+                try:
+                    return (0, float(text))
+                except ValueError:
+                    pass
+        return (1, str(raw_index))
+
+    @staticmethod
+    def _build_fallback_update_id(
+        item_id: str,
+        group_word: str,
+        latest_title: str,
+        latest_update_time: str,
+    ) -> str:
+        seed = "|".join(
+            [
+                item_id.strip(),
+                group_word.strip(),
+                latest_title.strip(),
+                latest_update_time.strip(),
+            ]
+        )
+        digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:20]
+        return f"fallback-{digest}"
+
+    def _build_latest_update_from_web_meta(
+        self,
+        item_id: str,
+        group_word: str,
+    ) -> AdapterUpdate | None:
+        meta = self._fetch_web_meta(item_id)
+        latest_update_time = str(meta.get("latest_update_time") or "")
+        latest_chapters = meta.get("latest_chapters", [])
+        latest_title = ""
+        if isinstance(latest_chapters, list):
+            for chapter in latest_chapters:
+                if isinstance(chapter, str) and chapter.strip():
+                    latest_title = chapter.strip()
+                    break
+        elif isinstance(latest_chapters, str):
+            latest_title = latest_chapters.strip()
+        if not latest_title:
+            return None
+        return AdapterUpdate(
+            update_id=self._build_fallback_update_id(
+                item_id=item_id,
+                group_word=group_word,
+                latest_title=latest_title,
+                latest_update_time=latest_update_time,
+            ),
+            title=latest_title,
+            url=f"https://www.mangacopy.com/comic/{item_id}",
+        )
+
+    @staticmethod
     def _json_or_raise(resp: httpx.Response, context: str) -> dict:
         try:
             payload = resp.json()
@@ -325,21 +395,50 @@ class CopyMangaAdapter:
             raise AdapterUpstreamError(f"{context} returned unsupported JSON structure")
         return payload
 
+    def _api_get(self, path: str, *, params: dict, context: str) -> httpx.Response:
+        url = f"{settings.cm_api_base_url}{path}"
+        deadline = monotonic() + self._api_retry_total_seconds
+        attempt = 0
+        last_exc: Exception | None = None
+        while attempt < self._api_retry_max_attempts:
+            attempt += 1
+            try:
+                return self.client.get(url, params=params, headers=self._headers())
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                remaining = deadline - monotonic()
+                if attempt >= self._api_retry_max_attempts or remaining <= 0:
+                    break
+                # Keep retry cadence close to reference behavior:
+                # around 1s base delay with small bounded jitter.
+                base_delay = self._api_retry_base_delay_seconds + random.uniform(-0.2, 0.2)
+                delay = min(max(base_delay, 0.05), remaining)
+                log.warning(
+                    "copymanga %s request attempt %s/%s failed: %s; retry in %.2fs",
+                    context,
+                    attempt,
+                    self._api_retry_max_attempts,
+                    exc,
+                    delay,
+                )
+                sleep(delay)
+        raise AdapterUpstreamError(f"copymanga {context} request failed: {last_exc}")
+
     def search(self, query: str, page: int) -> SearchPage:
         limit = 20
         offset = (max(page, 1) - 1) * limit
+        resp = self._api_get(
+            "/api/v3/search/comic",
+            params={
+                "limit": limit,
+                "offset": offset,
+                "q": query,
+                "q_type": "",
+                "platform": 1,
+            },
+            context="search",
+        )
         try:
-            resp = self.client.get(
-                f"{settings.cm_api_base_url}/api/v3/search/comic",
-                params={
-                    "limit": limit,
-                    "offset": offset,
-                    "q": query,
-                    "q_type": "",
-                    "platform": 1,
-                },
-                headers=self._headers(),
-            )
             resp.raise_for_status()
         except httpx.HTTPError as exc:
             raise AdapterUpstreamError(f"copymanga search request failed: {exc}") from exc
@@ -376,35 +475,65 @@ class CopyMangaAdapter:
 
     def list_updates(self, item_id: str, item_meta: dict | None = None) -> list[AdapterUpdate]:
         group_word = (item_meta or {}).get("group_word", "default")
+        resp = self._api_get(
+            f"/api/v3/comic/{item_id}/group/{group_word}/chapters",
+            params={"limit": 500, "offset": 0, "platform": 1, "in_mainland": "false"},
+            context="updates",
+        )
         try:
-            resp = self.client.get(
-                f"{settings.cm_api_base_url}/api/v3/comic/{item_id}/group/{group_word}/chapters",
-                params={"limit": 500, "offset": 0, "platform": 3, "in_mainland": "false"},
-                headers=self._headers(),
-            )
             resp.raise_for_status()
         except httpx.HTTPError as exc:
             raise AdapterUpstreamError(f"copymanga updates request failed: {exc}") from exc
 
         payload = self._json_or_raise(resp, "copymanga updates")
         results = payload.get("results", {})
+        chapters: list[dict] = []
+        if isinstance(results, dict):
+            chapter_list = results.get("list", [])
+            if isinstance(chapter_list, list):
+                chapters = [c for c in chapter_list if isinstance(c, dict)]
+
+        if chapters:
+            ordered = sorted(chapters, key=self._chapter_sort_key)
+            updates = [
+                AdapterUpdate(
+                    update_id=chapter.get("uuid", ""),
+                    title=chapter.get("name", ""),
+                    url=f"https://www.mangacopy.com/comic/{item_id}",
+                )
+                for chapter in ordered
+                if chapter.get("uuid")
+            ]
+            if updates:
+                return updates
+
+        # Risk-control response (`code=210`) can block chapter API in some environments.
+        # Fallback to webpage latest chapter keeps check/update flow functional.
+        latest_update = self._build_latest_update_from_web_meta(
+            item_id,
+            str(group_word or "default"),
+        )
+        if latest_update is not None:
+            if payload.get("code") != 200:
+                log.warning(
+                    "copymanga chapter api blocked for %s (code=%s), fallback to web meta latest",
+                    item_id,
+                    payload.get("code"),
+                )
+            return [latest_update]
+
         if not isinstance(results, dict):
             raise AdapterUpstreamError("copymanga updates returned malformed results payload")
-        chapters = [c for c in results.get("list", []) if isinstance(c, dict)]
-        ordered = sorted(chapters, key=lambda c: c.get("index", 0))
-        return [
-            AdapterUpdate(
-                update_id=chapter.get("uuid", ""),
-                title=chapter.get("name", ""),
-                url=f"https://www.mangacopy.com/comic/{item_id}",
-            )
-            for chapter in ordered
-            if chapter.get("uuid")
-        ]
+        return []
 
     def healthcheck(self) -> bool:
         try:
-            self.client.get(f"{settings.cm_api_base_url}/api/v3/search/comic", params={"q": "a"})
+            resp = self._api_get(
+                "/api/v3/search/comic",
+                params={"q": "a", "platform": 1},
+                context="healthcheck",
+            )
+            resp.raise_for_status()
             return True
         except Exception as exc:  # noqa: BLE001
             log.warning("copymanga healthcheck failed: %s", exc)

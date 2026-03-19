@@ -82,6 +82,7 @@ Phase 1 is a Docker-first single-service architecture with:
 ## Adapter Runtime Notes
 - `copymanga` search results are enriched by webpage metadata scraping fallback.
 - Short in-process TTL cache (by `item_id`) is used for meta enrichment to reduce repeated fetches during paged search.
+- `copymanga` API calls use strict official-like header contract (`COPY/3.0.0` + `version/platform/webp/region`) with bounded short-timeout retry to reduce transient request failures.
 - `kxo` updates use a two-step same-session fetch (`/c/<id>.htm` token extraction -> `/book_data.php?h=...`).
 - `kxo` is manual-only in current scope: search endpoint rejects `source=kxo` with a readable manual-only error.
 - KXO host fallback order is `configured base -> kzo.moe -> kxo.moe`.
